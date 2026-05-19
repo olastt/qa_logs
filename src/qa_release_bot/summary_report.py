@@ -70,17 +70,11 @@ def render_summary_markdown(report: SummaryReport) -> str:
 
 def _render_new_issues(report: SummaryReport) -> list[str]:
     if not report.new_issues:
-        lines = ["✅ **Новых логов за сегодня (МСК) нет.**"]
-        if report.is_first_run:
-            lines.append("_Снапшот для динамики сохранён._")
-        return lines
+        return ["✅ **Новых логов за сегодня (МСК) нет.**"]
     lines = [
-        f"**Сегодня появилось: {len(report.new_issues)}** (first_seen за текущий день, МСК)",
+        f"**Сегодня появилось: {len(report.new_issues)}**",
         "",
     ]
-    if report.is_first_run:
-        lines.insert(0, "📌 Первый снапшот сохранён — ниже логи, появившиеся сегодня.")
-        lines.insert(1, "")
     for item in report.new_issues[:25]:
         analysis = analyze_issue_full(
             item.issue, item.severity, summary_mode=True

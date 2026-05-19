@@ -222,11 +222,18 @@ class GlitchtipClient:
         enriched = 0
         for issue in issues:
             frames: list[StackFrame] = []
+            log_messages: list[str] = []
             if do_enrich and issue.id in enrich_ids:
-                frames = self._fetch_stack_frames(issue.id)
+                frames, log_messages = self._fetch_latest_event(issue.id)
                 enriched += 1
+            else:
+                frames = []
             if not frames:
                 frames = _frames_from_metadata(issue.metadata)
+            meta = dict(issue.metadata)
+            if log_messages:
+                meta["log_messages"] = log_messages[:12]
+                meta["log_excerpt"] = log_messages[0][:600]
             records.append(
                 IssueRecord(
                     id=issue.id,
@@ -240,7 +247,7 @@ class GlitchtipClient:
                     project_slug=project.slug,
                     project_id=issue.project_numeric_id or fallback_project_id,
                     stack_frames=frames[:5],
-                    metadata=issue.metadata,
+                    metadata=meta,
                 )
             )
         log.info(
@@ -252,6 +259,10 @@ class GlitchtipClient:
         return records
 
     def _fetch_stack_frames(self, issue_id: str) -> list[StackFrame]:
+        frames, _ = self._fetch_latest_event(issue_id)
+        return frames
+
+    def _fetch_latest_event(self, issue_id: str) -> tuple[list[StackFrame], list[str]]:
         if self._opts.enrich_stack_delay_sec > 0:
             time.sleep(self._opts.enrich_stack_delay_sec)
         try:
@@ -263,20 +274,21 @@ class GlitchtipClient:
                 retry_base_sec=self._opts.retry_base_sec,
             )
             if response.status_code == 404:
-                return []
+                return [], []
             if response.status_code == 429:
-                return _frames_from_metadata({})
+                return [], []
             response.raise_for_status()
-            return _extract_frames(self._parse_json(response))
+            event = self._parse_json(response)
+            return _extract_frames(event), _extract_log_messages(event)
         except GlitchtipApiError:
-            return []
+            return [], []
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 log.warning("stack_skipped_rate_limit", issue_id=issue_id)
-                return []
-            return []
+                return [], []
+            return [], []
         except Exception:
-            return []
+            return [], []
 
     def _lookup_project_id(self, project: GlitchtipProjectRef) -> str:
         key = (project.org_slug, project.slug)
@@ -356,6 +368,42 @@ def _frames_from_metadata(metadata: dict[str, Any]) -> list[StackFrame]:
             function=str(metadata.get("function") or ""),
         )
     ]
+
+
+def _extract_log_messages(event: dict[str, Any]) -> list[str]:
+    messages: list[str] = []
+    for entry in event.get("entries") or []:
+        etype = entry.get("type")
+        data = entry.get("data") or {}
+        if etype == "exception":
+            for exc in data.get("values") or []:
+                if exc.get("type"):
+                    messages.append(str(exc["type"]))
+                val = exc.get("value")
+                if val:
+                    messages.append(str(val))
+        elif etype == "message":
+            for key in ("formatted", "message"):
+                if data.get(key):
+                    messages.append(str(data[key]))
+                    break
+    for exc in event.get("exception", {}).get("values", []) or []:
+        if exc.get("type"):
+            messages.append(str(exc["type"]))
+        if exc.get("value"):
+            messages.append(str(exc["value"]))
+    if event.get("title"):
+        messages.append(str(event["title"]))
+    if event.get("message"):
+        messages.append(str(event["message"]))
+    seen: set[str] = set()
+    out: list[str] = []
+    for msg in messages:
+        key = msg.strip()[:200]
+        if key and key not in seen:
+            seen.add(key)
+            out.append(msg.strip())
+    return out
 
 
 def _extract_frames(event: dict[str, Any]) -> list[StackFrame]:

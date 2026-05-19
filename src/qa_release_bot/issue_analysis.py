@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from qa_release_bot.issue_explain import explain_dev_notes, explain_what_happened
 from qa_release_bot.issue_explain_summary import build_summary_what_happened
+from qa_release_bot.issue_plain_explain import explain_for_tester
 from qa_release_bot.issue_history import IssueHistory, build_issue_history, format_history
 from qa_release_bot.issue_history import format_history_span
 from qa_release_bot.issue_record import IssueRecord
@@ -34,6 +35,8 @@ class IssueAnalysisFull:
     group_tag: str
     controller_key: str | None
     is_unmapped_controller: bool
+    plain_one_liner: str = ""
+    plain_why: str = ""
 
 
 def analyze_issue_full(
@@ -58,9 +61,14 @@ def analyze_issue_full(
     risk_label, risk_css = _risk_label(title_lower, issue, severity)
     danger = risk_label
     questions, hypothesis = explain_dev_notes(issue, what, is_clear=is_clear)
+    plain_one = ""
+    plain_why = ""
     if summary_mode:
+        plain = explain_for_tester(issue)
+        plain_one = plain.one_liner
+        plain_why = plain.why
         what = build_summary_what_happened(
-            issue, resolution, what, hypothesis=hypothesis
+            issue, resolution, what, hypothesis=hypothesis, plain=plain
         )
         questions = []
     tracker = generate_tracker_title(issue, resolution, reg)
@@ -87,18 +95,27 @@ def analyze_issue_full(
         group_tag=resolution.short_tag,
         controller_key=resolution.controller_key,
         is_unmapped_controller=bool(resolution.controller_key and not resolution.is_mapped),
+        plain_one_liner=plain_one,
+        plain_why=plain_why,
     )
 
 
 def format_analysis_block(
     analysis: IssueAnalysisFull, *, summary_mode: bool = False
 ) -> str:
-    lines = [f"🔍 **Что случилось:** {analysis.what_happened}"]
-    if analysis.module:
-        lines.append(f"📍 **Модуль:** {analysis.module}")
-    if summary_mode:
+    lines: list[str] = []
+    if summary_mode and analysis.plain_one_liner:
+        lines.append(f"💡 **Если упростить:** {analysis.plain_one_liner}")
+        lines.append(f"**Почему появилась:** {analysis.plain_why}")
+        if analysis.module:
+            lines.append(f"📍 **Модуль:** {analysis.module}")
+        if analysis.what_happened:
+            lines.append(f"🔍 **Подробнее:** {analysis.what_happened}")
         lines.append(f"⚠️ **Риск:** {analysis.risk_label}")
     else:
+        lines.append(f"🔍 **Что случилось:** {analysis.what_happened}")
+        if analysis.module:
+            lines.append(f"📍 **Модуль:** {analysis.module}")
         lines.append(f"💥 **ЧТО ВИДИТ ПОЛЬЗОВАТЕЛЬ**\n{analysis.user_visible}")
         lines.append(f"⚠️ **РИСК**\n{analysis.risk_label}")
         if analysis.dev_hypothesis:
@@ -107,7 +124,8 @@ def format_analysis_block(
             lines.append("❓ **ЧТО УТОЧНИТЬ У РАЗРАБОТЧИКА**")
             for q in analysis.dev_questions:
                 lines.append(f"- {q}")
-    lines.append(f"📋 **Название:** {analysis.tracker_title}")
+    if not summary_mode:
+        lines.append(f"📋 **Название:** {analysis.tracker_title}")
     if analysis.glitchtip_url:
         lines.append(f"🔗 {analysis.glitchtip_url}")
     lines.append(format_history_span(analysis.history))

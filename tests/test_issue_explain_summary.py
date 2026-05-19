@@ -30,4 +30,4 @@ def test_summary_what_includes_module_and_stack():
     text = build_summary_what_happened(issue, resolution, base, hypothesis="вероятно null")
     assert "Раздел:" in text or "Компонент:" in text or "Billing" in text
     assert "TypeError" in text or "null" in text
-    assert "В коде:" in text
+    assert "Место в коде:" in text or "В коде:" in text

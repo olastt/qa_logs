@@ -305,6 +305,7 @@ h1, h2, h3, .font-display { font-family: 'Unbounded', sans-serif; font-weight: 7
 }
 .issue-block { font-size: 13px; margin-bottom: 10px; }
 .issue-block strong { color: var(--text); font-weight: 500; }
+.plain-one-liner { line-height: 1.45; }
 .issue-questions { margin: 8px 0 12px 18px; font-size: 13px; color: var(--muted); }
 .issue-meta {
   display: flex;
@@ -1018,77 +1019,36 @@ def _new_issues_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
         section_title = "🆕 Новые логи"
         return f'<section class="section"><h2 class="section-title">{section_title}</h2>{body}</section>'
     if not ctx.new_issues:
-        empty = (
-            "✅ <strong>Новых логов за сегодня нет</strong>."
-            if ctx.is_summary
-            else "✅ <strong>Новых логов нет</strong> — всё уже было известно."
+        body = (
+            '<p class="stub-card">✅ <strong>Новых логов нет</strong> — всё уже было известно.</p>'
         )
-        note = (
-            '<p class="stub-card" style="margin-bottom:12px">'
-            "Логи с <strong>first_seen</strong> за сегодня (МСК) по всем issue проекта.</p>"
-            if ctx.is_summary
-            else ""
-        )
-        body = f"{note}<p class=\"stub-card\">{empty}</p>"
     else:
-        note = (
-            '<p class="stub-card" style="margin-bottom:12px">'
-            "Логи с <strong>first_seen</strong> за сегодня (МСК) по всем issue проекта.</p>"
-            if ctx.is_summary
-            else ""
-        )
         cards = []
         for item in ctx.new_issues[:25]:
             a = _analyze(item.issue, item.severity, ctx, reg)
             sev_label, _, _ = _SEV[item.severity]
             first = fmt_date_ru(item.issue.first_seen)
             link = _glitchtip_link_html(a.glitchtip_url)
-            module_line = (
-                f'<p class="new-meta"><strong>Модуль:</strong> {_esc(a.module)}</p>'
-                if ctx.is_summary and a.module
-                else ""
-            )
-            what_block = (
-                f'<p class="issue-block"><strong>🔍 Что случилось:</strong> '
-                f"{_esc(a.what_happened)}</p>"
-                if ctx.is_summary
-                else ""
-            )
-            title = (
-                f'<p class="new-title">{_title_link_html(a.tracker_title, a.glitchtip_url)}</p>'
-                if ctx.is_summary
-                else f'<p class="new-title">{_esc(a.tracker_title)}</p>'
-            )
-            badge = "СЕГОДНЯ" if ctx.is_summary else "НОВОЕ"
             cards.append(
                 f'<div class="new-card">'
-                f'<span class="new-badge">{badge}</span>'
-                f"{title}"
+                f'<span class="new-badge">НОВОЕ</span>'
+                f'<p class="new-title">{_esc(a.tracker_title)}</p>'
                 f'<p class="new-meta">{_esc(sev_label)} · {_esc(item.environment)} · '
                 f"первый раз: {_esc(first)} · повторов: {item.issue.count}</p>"
                 f'<p class="new-meta">{_esc(item.deploy_hint)}</p>'
-                f"{module_line}{what_block}"
-                f"{'' if ctx.is_summary else link}"
+                f"{link}"
                 f"</div>"
             )
         rest = len(ctx.new_issues) - min(25, len(ctx.new_issues))
         more = f'<p class="new-meta">… ещё {rest}</p>' if rest > 0 else ""
-        body = f'{note}<div class="new-section">{"".join(cards)}{more}</div>'
+        body = f'<div class="new-section">{"".join(cards)}{more}</div>'
     section_title = "🆕 Новые логи"
     return f'<section class="section"><h2 class="section-title">{section_title}</h2>{body}</section>'
 
 
 def _new_issues_section_summary(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
-    note = (
-        '<p class="stub-card" style="margin-bottom:12px">'
-        "Логи с <strong>first_seen</strong> за сегодня (МСК) по всем issue проекта."
-    )
-    if ctx.is_first_run:
-        note += " Снапшот для динамики сохранён."
-    note += "</p>"
-
     if not ctx.new_issues:
-        body = f'{note}<p class="stub-card">✅ <strong>Новых логов за сегодня нет</strong>.</p>'
+        body = '<p class="stub-card">✅ <strong>Новых логов за сегодня нет</strong>.</p>'
     else:
         max_count = max((i.issue.count for i in ctx.new_issues), default=1)
         cards = "".join(
@@ -1097,7 +1057,7 @@ def _new_issues_section_summary(ctx: HtmlPageContext, reg: IssueTitleRegistry) -
         )
         rest = len(ctx.new_issues) - min(25, len(ctx.new_issues))
         more = f'<p class="stub-card">… ещё {rest}</p>' if rest > 0 else ""
-        body = f"{note}{cards}{more}"
+        body = f"{cards}{more}"
     return (
         '<section class="section">'
         '<h2 class="section-title">🆕 Новые логи за сегодня</h2>'
@@ -1168,6 +1128,30 @@ def _issue_card_html(
         f"Существует: {analysis.history.exists_days} дн. "
         f"(с {analysis.history.first_seen_label} → {analysis.history.last_seen_label})"
     )
+    if ctx.is_summary and analysis.plain_one_liner:
+        details_block = ""
+        if analysis.what_happened:
+            details_block = (
+                f'<p class="issue-block"><strong>Подробнее:</strong> '
+                f"{_esc(analysis.what_happened)}</p>"
+            )
+        issue_body = (
+            f'<div class="issue-body">'
+            f'<p class="issue-block plain-one-liner"><strong>💡 Если упростить:</strong> '
+            f"{_esc(analysis.plain_one_liner)}</p>"
+            f'<p class="issue-block"><strong>Почему появилась:</strong> {_esc(analysis.plain_why)}</p>'
+            f"{module_line}{details_block}"
+            f'<p class="issue-block"><strong>⚠️ Риск:</strong> '
+            f"{_risk_badge_html(analysis.risk_css, analysis.risk_label)}</p></div>"
+        )
+    else:
+        issue_body = (
+            f'<div class="issue-body">'
+            f'<p class="issue-block"><strong>🔍 Что случилось:</strong> {_esc(analysis.what_happened)}</p>'
+            f"{module_line}{user_block}"
+            f'<p class="issue-block"><strong>⚠️ Риск:</strong> '
+            f"{_risk_badge_html(analysis.risk_css, analysis.risk_label)}</p>{dev_block}</div>"
+        )
     return f"""<article class="issue-card{stale_cls}" style="--card-stripe:{stripe}">
   {stale_badge}
   <div class="issue-head">
@@ -1176,13 +1160,7 @@ def _issue_card_html(
     <span class="dyn-badge {dyn_cls}">{_esc(dyn_lbl)}</span>
   </div>
   <p class="issue-tracker">{_title_link_html(analysis.tracker_title, analysis.glitchtip_url)}</p>
-  <div class="issue-body">
-    <p class="issue-block"><strong>🔍 Что случилось:</strong> {_esc(analysis.what_happened)}</p>
-    {module_line}
-    {user_block}
-    <p class="issue-block"><strong>⚠️ Риск:</strong> {_risk_badge_html(analysis.risk_css, analysis.risk_label)}</p>
-    {dev_block}
-  </div>
+  {issue_body}
   <p class="issue-meta">📅 {history_line} · {_esc(f"👁 {analysis.history.last_seen_label}")} · 🔁 {issue.count} повт.</p>
   {_progress_bar_html(pct, color, f"count: {issue.count}")}
   {link}
