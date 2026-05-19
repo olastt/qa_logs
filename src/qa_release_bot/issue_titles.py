@@ -21,10 +21,10 @@ class IssueTitleRegistry:
         key = base.strip().lower()
         if key not in self._counts:
             self._counts[key] = 0
-            return _truncate(base, _TITLE_MAX)
+            return base.strip()
         self._counts[key] += 1
         hint = _disambiguator(issue)
-        return _truncate(f"{base} — {hint}", _TITLE_MAX)
+        return f"{base} — {hint}"
 
 
 def glitchtip_issue_url(base_url: str, issue_id: str) -> str:
@@ -141,11 +141,11 @@ def _shorten_technical_title(raw: str) -> str:
 def _disambiguator(issue: IssueRecord) -> str:
     hint = _after_colon(issue.title)
     if hint and len(hint) > 4:
-        return _truncate(hint, 28)
+        return hint[:120]
     if issue.culprit:
         part = issue.culprit.replace("\\", "/").split("/")[-1]
         if part and part != issue.culprit:
-            return _truncate(part.replace(".php", ""), 28)
+            return part.replace(".php", "")
     return f"id {issue.id}"
 
 

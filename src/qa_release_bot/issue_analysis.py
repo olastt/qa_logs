@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qa_release_bot.issue_explain import explain_dev_notes, explain_what_happened
 from qa_release_bot.issue_history import IssueHistory, build_issue_history, format_history
 from qa_release_bot.issue_history import format_history_span
 from qa_release_bot.issue_record import IssueRecord
@@ -24,6 +25,7 @@ class IssueAnalysisFull:
     risk_label: str
     risk_css: str
     dev_questions: list[str]
+    dev_hypothesis: str | None
     tracker_title: str
     history: IssueHistory
     is_stale: bool
@@ -47,11 +49,11 @@ def analyze_issue_full(
     title_lower = issue.title.lower()
 
     module_display = resolution.human_module
-    what = _what_happened_plain(title_lower, issue)
+    what, is_clear = explain_what_happened(issue)
     user_visible = _user_visible_one_of(title_lower, issue)
     risk_label, risk_css = _risk_label(title_lower, issue, severity)
     danger = risk_label
-    questions = _dev_questions(title_lower, issue, module_display)
+    questions, hypothesis = explain_dev_notes(issue, what, is_clear=is_clear)
     tracker = generate_tracker_title(issue, resolution, reg)
     history = build_issue_history(issue)
 
@@ -63,6 +65,7 @@ def analyze_issue_full(
         risk_label=risk_label,
         risk_css=risk_css,
         dev_questions=questions,
+        dev_hypothesis=hypothesis,
         tracker_title=tracker,
         history=history,
         is_stale=is_stale(issue),
@@ -79,9 +82,12 @@ def format_analysis_block(analysis: IssueAnalysisFull) -> str:
         lines.append(f"📍 **МОДУЛЬ**\n{analysis.module}")
     lines.append(f"💥 **ЧТО ВИДИТ ПОЛЬЗОВАТЕЛЬ**\n{analysis.user_visible}")
     lines.append(f"⚠️ **РИСК**\n{analysis.risk_label}")
-    lines.append("❓ **ЧТО УТОЧНИТЬ У РАЗРАБОТЧИКА**")
-    for q in analysis.dev_questions:
-        lines.append(f"- {q}")
+    if analysis.dev_hypothesis:
+        lines.append(f"💡 **ПРЕДПОЛОЖЕНИЕ**\n{analysis.dev_hypothesis}")
+    if analysis.dev_questions:
+        lines.append("❓ **ЧТО УТОЧНИТЬ У РАЗРАБОТЧИКА**")
+        for q in analysis.dev_questions:
+            lines.append(f"- {q}")
     lines.append(f"📋 **Название:** {analysis.tracker_title}")
     if analysis.glitchtip_url:
         lines.append(f"🔗 {analysis.glitchtip_url}")
@@ -95,9 +101,12 @@ def format_analysis_plain(analysis: IssueAnalysisFull) -> str:
         lines.append(f"📍 МОДУЛЬ: {analysis.module}")
     lines.append(f"💥 ЧТО ВИДИТ ПОЛЬЗОВАТЕЛЬ: {analysis.user_visible}")
     lines.append(f"⚠️ РИСК: {analysis.risk_label}")
-    lines.append("❓ ЧТО УТОЧНИТЬ У РАЗРАБОТЧИКА:")
-    for q in analysis.dev_questions:
-        lines.append(f"  • {q}")
+    if analysis.dev_hypothesis:
+        lines.append(f"💡 ПРЕДПОЛОЖЕНИЕ: {analysis.dev_hypothesis}")
+    if analysis.dev_questions:
+        lines.append("❓ УТОЧНИТЬ:")
+        for q in analysis.dev_questions:
+            lines.append(f"  • {q}")
     if analysis.glitchtip_url:
         lines.append(
             f'<a href="{analysis.glitchtip_url}" target="_blank" class="glitchtip-link">'
@@ -118,54 +127,15 @@ def _risk_label(title: str, issue: IssueRecord, severity: IssueSeverity) -> tupl
     return "НИЗКО", "risk-low"
 
 
-def _what_happened_plain(title: str, issue: IssueRecord) -> str:
-    if "cannot assign null" in title:
-        return (
-            "При сохранении система получила пустое значение там, "
-            "где ожидались обязательные данные — запись не завершается."
-        )
-    if "active record" in title and "новая" in title:
-        return (
-            "Система пытается изменить или удалить запись, которая ещё не была "
-            "нормально сохранена в базе."
-        )
-    if "integrity constraint" in title or "1451" in title:
-        return "Связанные записи в БД мешают удалить или изменить данные."
-    if "hasattribute" in title and "null" in title:
-        return "Получен пустой объект — форма могла отправиться до загрузки данных."
-    if "undefined array key" in title:
-        return "В запросе не хватает ожидаемого поля."
-    if "rabbitmq" in title:
-        return "Фоновые задачи не могут связаться с очередью сообщений."
-    if "clickhouse" in title:
-        return "Не удаётся записать аналитику в хранилище — на UI обычно не влияет."
-    if "file_put_contents" in title:
-        return "Сервер не может записать служебный файл (права или диск)."
-    if issue.level == "fatal":
-        return "Приложение аварийно прерывает обработку запроса."
-    return "Ошибка не даёт завершить запрошенное действие."
-
-
 def _user_visible_one_of(title: str, issue: IssueRecord) -> str:
     if "clickhouse" in title or "file_put_contents" in title:
         return "Ошибка только в логах, пользователь ничего не замечает"
     if "rabbitmq" in title and issue.count < 50:
         return "Ошибка только в логах, пользователь ничего не замечает"
+    if "sync" in title and ("calendar" in title or "admission" in title):
+        return "Данные могут не отобразиться в календаре или основной системе"
     if issue.level == "fatal" or "cannot assign null" in title:
         return "Видит сообщение об ошибке, действие не выполняется"
     if "undefined array key" in title or "active record" in title:
         return "Данные не сохраняются без видимой причины"
     return "Видит сообщение об ошибке, действие не выполняется"
-
-
-def _dev_questions(title: str, issue: IssueRecord, module: str | None) -> list[str]:
-    mod = module or "этом модуле"
-    qs = [
-        f"В каком сценарии в {mod} вызывается эта ошибка?",
-        "Какое действие пользователя в интерфейсе её запускает?",
-    ]
-    if "null" in title or "undefined" in title:
-        qs.append("Какие поля формы должны быть заполнены?")
-    else:
-        qs.append("Есть ли тестовые данные на stage для воспроизведения?")
-    return qs[:3]

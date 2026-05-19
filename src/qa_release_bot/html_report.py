@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from qa_release_bot.html_dates import fmt_date_ru, fmt_date_ru_short
+from qa_release_bot.html_dates import fmt_date_ru, fmt_date_ru_short, fmt_datetime_ru
 from collections import defaultdict
 
 from qa_release_bot.issue_analysis import IssueAnalysisFull, analyze_issue_full
@@ -288,6 +288,10 @@ h1, h2, h3, .font-display { font-family: 'Unbounded', sans-serif; font-weight: 7
   font-family: 'Unbounded', sans-serif;
   font-size: 14px;
   margin-bottom: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .issue-block { font-size: 13px; margin-bottom: 10px; }
 .issue-block strong { color: var(--text); font-weight: 500; }
@@ -616,6 +620,11 @@ def _max_count(ctx: HtmlPageContext) -> int:
     return max(counts) if counts else 1
 
 
+def _max_blocker_high_count(ctx: HtmlPageContext) -> int:
+    counts = [i.count for i in ctx.blockers + ctx.highs]
+    return max(counts) if counts else 1
+
+
 def _max_ml_count(ctx: HtmlPageContext) -> int:
     counts = [i.count for i in ctx.mediums + ctx.lows]
     return max(counts) if counts else 1
@@ -763,7 +772,7 @@ def render_html(
 ) -> str:
     fetched = ctx.fetched_at.astimezone(timezone.utc)
     total_product = len(ctx.blockers) + len(ctx.highs) + len(ctx.mediums) + len(ctx.lows)
-    max_count = _max_count(ctx)
+    max_count = _max_blocker_high_count(ctx)
     reg = registry or IssueTitleRegistry()
     _warm_registry(ctx, reg)
 
@@ -931,7 +940,18 @@ def _issue_card_html(
         if analysis.module
         else ""
     )
-    questions = "".join(f"<li>{_esc(q)}</li>" for q in analysis.dev_questions)
+    dev_block = ""
+    if analysis.dev_hypothesis:
+        dev_block = (
+            f'<p class="issue-block"><strong>💡 Предположение:</strong> '
+            f"{_esc(analysis.dev_hypothesis)}</p>"
+        )
+    elif analysis.dev_questions:
+        q_html = "".join(f"<li>{_esc(q)}</li>" for q in analysis.dev_questions)
+        dev_block = (
+            '<p class="issue-block"><strong>❓ Уточнить у разработчика:</strong></p>'
+            f'<ul class="issue-questions">{q_html}</ul>'
+        )
     link = _glitchtip_link_html(analysis.glitchtip_url)
     history_line = _esc(
         f"Существует: {analysis.history.exists_days} дн. "
@@ -950,10 +970,9 @@ def _issue_card_html(
     {module_line}
     <p class="issue-block"><strong>💥 Что видит пользователь:</strong> {_esc(analysis.user_visible)}</p>
     <p class="issue-block"><strong>⚠️ Риск:</strong> {_risk_badge_html(analysis.risk_css, analysis.risk_label)}</p>
-    <p class="issue-block"><strong>❓ Уточнить у разработчика:</strong></p>
-    <ul class="issue-questions">{questions}</ul>
+    {dev_block}
   </div>
-  <p class="issue-meta">📅 {history_line} · 🔁 {issue.count} повт.</p>
+  <p class="issue-meta">📅 {history_line} · {_esc(f"👁 {analysis.history.last_seen_label}")} · 🔁 {issue.count} повт.</p>
   {_progress_bar_html(pct, color, f"count: {issue.count}")}
   {link}
 </article>"""
@@ -1003,7 +1022,7 @@ def _ml_table_row(
         f"<td>{_risk_badge_html(analysis.risk_css, analysis.risk_label)}</td>"
         f"<td>{issue.count}</td>"
         f"<td>{_esc(fmt_date_ru(issue.first_seen))}</td>"
-        f"<td>{_esc(fmt_date_ru(issue.last_seen))}</td>"
+        f"<td>{_esc(fmt_datetime_ru(issue.last_seen))}</td>"
         f'<td class="{_days_class(days)}">{days}</td>'
         f"<td>{_env_badge(ctx.env_label)}</td>"
         f"<td>{_glitchtip_link_html(analysis.glitchtip_url, compact=True)}</td>"

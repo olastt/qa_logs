@@ -75,7 +75,7 @@ def _aware(dt: datetime) -> datetime:
 
 
 def _fmt_ru(dt: datetime) -> str:
-    from qa_release_bot.html_dates import fmt_date_ru
+    from qa_release_bot.html_dates import fmt_datetime_ru
 
-    d = dt.astimezone(timezone.utc) if dt.tzinfo else dt
-    return fmt_date_ru(d)
+    d = dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return fmt_datetime_ru(d)
