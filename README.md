@@ -58,3 +58,22 @@ qa-bot release vetmanager-extjs --no-stack --notify
 **HTML в чат:** для `report` / `summary` отчёт выкладывается на Surge, в Bitrix приходит ссылка `📊 Отчёт: https://…` (как у автотестов).
 
 Артефакты Actions: `reports/*.html`, markdown и лог run.
+
+## Запуск из Bitrix24 → GitHub
+
+Обратная связь: команда в Bitrix запускает workflow, результат снова приходит в чат.
+
+Подробно: [docs/bitrix-github-trigger.md](docs/bitrix-github-trigger.md)
+
+Кратко:
+
+1. Создайте GitHub PAT с правом **actions:write**.
+2. В Bitrix робот **HTTP POST** на  
+   `https://api.github.com/repos/olastt/qa_logs/actions/workflows/qa-logs.yml/dispatches`  
+   с телом `{"ref":"main","inputs":{"action":"📊 Сводка — что нового","project":"webapps-widgets","notify_bitrix":true}}`.
+3. Или поднимите `python scripts/bitrix_webhook_server.py` и шлите команды вида  
+   `summary webapps-widgets` из чата.
+
+```bash
+python scripts/github_dispatch.py summary webapps-widgets
+```
