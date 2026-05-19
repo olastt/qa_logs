@@ -18,7 +18,7 @@ from qa_release_bot.config import (
     report_output_dir,
     snapshots_dir,
 )
-from qa_release_bot.new_issues import find_new_issues_by_id
+from qa_release_bot.new_issues import find_new_issues_first_seen_today
 from qa_release_bot.noise_groups import group_noise_issues
 from qa_release_bot.release_decision import decide_summary, split_by_severity
 from qa_release_bot.severity_rules import IssueSeverity
@@ -86,12 +86,26 @@ class SingleProjectSummaryRunner:
             raw = client.fetch_issue_records(
                 project, query=query, stats_period=stats_period
             )
+            log.info("fetching_all_for_new_today", project=project.slug)
+            all_for_new = client.fetch_all_issue_records(
+                project, query="", stats_period="90d"
+            )
 
         current_ids = {i.id for i in raw}
         disappeared_count = len(prev_ids - current_ids) if prev_ids else 0
+        summary_project_id = next(
+            (i.project_id for i in raw if i.project_id),
+            next((i.project_id for i in all_for_new if i.project_id), ""),
+        )
 
-        new_items = find_new_issues_by_id(
-            raw, prev, environment=snap_env, last_deploy=deploy
+        new_items = find_new_issues_first_seen_today(
+            all_for_new,
+            reference_at=fetched_at,
+            environment=snap_env,
+            last_deploy=deploy,
+            glitchtip_base_url=base_url.rstrip("/"),
+            glitchtip_org_slug=self._settings.glitchtip_org_slug,
+            glitchtip_project_id=summary_project_id,
         )
         self._snapshots.save(snap_env, raw)
 
@@ -101,8 +115,6 @@ class SingleProjectSummaryRunner:
             by_sev[IssueSeverity.BLOCKER],
             by_sev[IssueSeverity.HIGH],
         )
-
-        summary_project_id = next((i.project_id for i in raw if i.project_id), "")
         summary = SummaryReport(
             product_name=ref["name"],
             instance=ref["instance"],

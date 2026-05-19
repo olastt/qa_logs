@@ -44,7 +44,7 @@ def render_summary_markdown(report: SummaryReport) -> str:
         f"`{report.instance}` / `{report.project_slug}`",
         f"🔍 `{report.issue_query}` · период **{report.stats_period}**",
         "",
-        "## 🆕 Появилось впервые",
+        "## 🆕 Новые логи за сегодня",
     ]
     lines.extend(_render_new_issues(report))
     lines.append("")
@@ -75,15 +75,20 @@ def _render_new_issues(report: SummaryReport) -> list[str]:
             "Новые логи появятся в следующей сводке.",
         ]
     if not report.new_issues:
-        return ["✅ **Новых логов нет** — всё уже было известно."]
-    lines = [f"**🆕 ПОЯВИЛОСЬ ВПЕРВЫЕ ({len(report.new_issues)})**", ""]
+        return ["✅ **Новых логов за сегодня (МСК) нет.**"]
+    lines = [
+        f"**Сегодня появилось: {len(report.new_issues)}** (first_seen за текущий день, МСК)",
+        "",
+    ]
     for item in report.new_issues[:25]:
-        lines.append("```")
-        lines.append(item.tracker_title)
-        lines.append(f"Серьёзность: {item.severity.value.upper()}")
-        lines.append(f"Первый раз: {item.issue.first_seen} | Повторов: {item.issue.count}")
-        lines.append(f"Вероятная причина: {item.deploy_hint}")
-        lines.append("```")
+        analysis = analyze_issue_full(
+            item.issue, item.severity, summary_mode=True
+        )
+        lines.append(f"### {analysis.tracker_title}")
+        lines.append(format_analysis_block(analysis, summary_mode=True))
+        lines.append(f"- {item.deploy_hint}")
+        if analysis.glitchtip_url:
+            lines.append(f"- {analysis.glitchtip_url}")
         lines.append("")
     rest = len(report.new_issues) - min(25, len(report.new_issues))
     if rest > 0:
@@ -115,10 +120,10 @@ def _render_issues(issues: list[IssueRecord]) -> list[str]:
     out: list[str] = []
     for issue in issues:
         sev = classify_severity(issue)
-        analysis = analyze_issue_full(issue, sev)
+        analysis = analyze_issue_full(issue, sev, summary_mode=True)
         stale = "\n\n> 🕰️ **STALE** — давно не воспроизводилось\n" if analysis.is_stale else ""
         out.append(f"### {analysis.tracker_title}{stale}")
-        out.append(format_analysis_block(analysis))
+        out.append(format_analysis_block(analysis, summary_mode=True))
         out.append("")
     return out
 

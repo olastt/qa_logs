@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from qa_release_bot.issue_explain import explain_dev_notes, explain_what_happened
+from qa_release_bot.issue_explain_summary import build_summary_what_happened
 from qa_release_bot.issue_history import IssueHistory, build_issue_history, format_history
 from qa_release_bot.issue_history import format_history_span
 from qa_release_bot.issue_record import IssueRecord
@@ -44,6 +45,7 @@ def analyze_issue_full(
     glitchtip_org_slug: str = "",
     glitchtip_project_id: str = "",
     module_map: dict[str, str] | None = None,
+    summary_mode: bool = False,
 ) -> IssueAnalysisFull:
     reg = registry or IssueTitleRegistry()
     mapping = module_map or load_module_map()
@@ -56,6 +58,11 @@ def analyze_issue_full(
     risk_label, risk_css = _risk_label(title_lower, issue, severity)
     danger = risk_label
     questions, hypothesis = explain_dev_notes(issue, what, is_clear=is_clear)
+    if summary_mode:
+        what = build_summary_what_happened(
+            issue, resolution, what, hypothesis=hypothesis
+        )
+        questions = []
     tracker = generate_tracker_title(issue, resolution, reg)
     history = build_issue_history(issue)
 
@@ -83,18 +90,23 @@ def analyze_issue_full(
     )
 
 
-def format_analysis_block(analysis: IssueAnalysisFull) -> str:
-    lines = [f"🔍 **ЧТО СЛУЧИЛОСЬ**\n{analysis.what_happened}"]
+def format_analysis_block(
+    analysis: IssueAnalysisFull, *, summary_mode: bool = False
+) -> str:
+    lines = [f"🔍 **Что случилось:** {analysis.what_happened}"]
     if analysis.module:
-        lines.append(f"📍 **МОДУЛЬ**\n{analysis.module}")
-    lines.append(f"💥 **ЧТО ВИДИТ ПОЛЬЗОВАТЕЛЬ**\n{analysis.user_visible}")
-    lines.append(f"⚠️ **РИСК**\n{analysis.risk_label}")
-    if analysis.dev_hypothesis:
-        lines.append(f"💡 **ПРЕДПОЛОЖЕНИЕ**\n{analysis.dev_hypothesis}")
-    if analysis.dev_questions:
-        lines.append("❓ **ЧТО УТОЧНИТЬ У РАЗРАБОТЧИКА**")
-        for q in analysis.dev_questions:
-            lines.append(f"- {q}")
+        lines.append(f"📍 **Модуль:** {analysis.module}")
+    if summary_mode:
+        lines.append(f"⚠️ **Риск:** {analysis.risk_label}")
+    else:
+        lines.append(f"💥 **ЧТО ВИДИТ ПОЛЬЗОВАТЕЛЬ**\n{analysis.user_visible}")
+        lines.append(f"⚠️ **РИСК**\n{analysis.risk_label}")
+        if analysis.dev_hypothesis:
+            lines.append(f"💡 **ПРЕДПОЛОЖЕНИЕ**\n{analysis.dev_hypothesis}")
+        if analysis.dev_questions:
+            lines.append("❓ **ЧТО УТОЧНИТЬ У РАЗРАБОТЧИКА**")
+            for q in analysis.dev_questions:
+                lines.append(f"- {q}")
     lines.append(f"📋 **Название:** {analysis.tracker_title}")
     if analysis.glitchtip_url:
         lines.append(f"🔗 {analysis.glitchtip_url}")

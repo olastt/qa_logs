@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+
+REPORT_TZ = ZoneInfo("Europe/Moscow")
 
 _MONTHS_RU = (
     "января",
@@ -33,6 +36,13 @@ def fmt_datetime_ru(dt: datetime) -> str:
     if dt.tzinfo:
         dt = dt.astimezone(timezone.utc)
     return f"{dt.day} {_MONTHS_RU[dt.month - 1]} в {dt.hour:02d}:{dt.minute:02d}"
+
+
+def calendar_date_in_report_tz(dt: datetime) -> date:
+    """Дата первого/последнего события в часовом поясе отчёта (Москва)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(REPORT_TZ).date()
 
 
 def fmt_date_ru_short(dt: datetime | date) -> str:

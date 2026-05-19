@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -118,6 +119,84 @@ class GlitchtipClient:
                 f"для {project.org_slug}/{project.slug}"
             )
         return [self._parse_issue(item, project) for item in data]
+
+    def fetch_all_issue_records(
+        self,
+        project: GlitchtipProjectRef,
+        *,
+        query: str = "",
+        stats_period: str = "90d",
+        page_limit: int = 100,
+        max_issues: int = 2500,
+    ) -> list[IssueRecord]:
+        """Все issue проекта (с пагинацией) — для «новых за сегодня»."""
+        fallback_project_id = self._lookup_project_id(project)
+        collected: list[GlitchtipIssue] = []
+        cursor: str | None = None
+        while len(collected) < max_issues:
+            batch, cursor = self._list_issues_page(
+                project,
+                query=query,
+                stats_period=stats_period,
+                limit=min(page_limit, max_issues - len(collected)),
+                cursor=cursor,
+            )
+            collected.extend(batch)
+            if not batch or not cursor:
+                break
+
+        records: list[IssueRecord] = []
+        for issue in collected:
+            records.append(
+                IssueRecord(
+                    id=issue.id,
+                    title=issue.title,
+                    level=issue.level,
+                    count=issue.count,
+                    last_seen=issue.last_seen,
+                    first_seen=issue.first_seen,
+                    culprit=issue.culprit,
+                    org_slug=project.org_slug,
+                    project_slug=project.slug,
+                    project_id=issue.project_numeric_id or fallback_project_id,
+                    stack_frames=_frames_from_metadata(issue.metadata)[:5],
+                    metadata=issue.metadata,
+                )
+            )
+        log.info(
+            "issues_loaded_all",
+            project=project.slug,
+            total=len(records),
+            query=query or "(all)",
+        )
+        return records
+
+    def _list_issues_page(
+        self,
+        project: GlitchtipProjectRef,
+        *,
+        query: str,
+        stats_period: str,
+        limit: int,
+        cursor: str | None,
+    ) -> tuple[list[GlitchtipIssue], str | None]:
+        path = f"/api/0/projects/{project.org_slug}/{project.slug}/issues/"
+        params: dict[str, Any] = {
+            "query": query,
+            "statsPeriod": stats_period,
+            "limit": limit,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        response = self._get(path, **params)
+        data = self._parse_json(response)
+        if not isinstance(data, list):
+            raise GlitchtipApiError(
+                f"Ожидался список issues, получено {type(data).__name__} "
+                f"для {project.org_slug}/{project.slug}"
+            )
+        issues = [self._parse_issue(item, project) for item in data]
+        return issues, _next_cursor_from_link(response.headers.get("Link"))
 
     def fetch_issue_records(
         self,
@@ -238,6 +317,18 @@ class GlitchtipClient:
             project_numeric_id=_project_id_from_raw(raw),
             metadata=metadata,
         )
+
+
+def _next_cursor_from_link(link_header: str | None) -> str | None:
+    if not link_header:
+        return None
+    for chunk in link_header.split(","):
+        if 'rel="next"' not in chunk or 'results="false"' in chunk:
+            continue
+        match = re.search(r'cursor="([^"]+)"', chunk)
+        if match:
+            return match.group(1)
+    return None
 
 
 def _project_id_from_raw(raw: dict[str, Any]) -> str:

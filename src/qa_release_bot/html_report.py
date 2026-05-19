@@ -704,7 +704,7 @@ def _glitchtip_link_kwargs(ctx: HtmlPageContext) -> dict[str, str]:
 
 
 def _warm_registry(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> None:
-    link = _glitchtip_link_kwargs(ctx)
+    link = {**_glitchtip_link_kwargs(ctx), "summary_mode": ctx.is_summary}
     for issue in ctx.blockers:
         analyze_issue_full(
             issue, IssueSeverity.BLOCKER, registry=reg, **link
@@ -726,7 +726,11 @@ def _analyze(
     reg: IssueTitleRegistry,
 ) -> IssueAnalysisFull:
     return analyze_issue_full(
-        issue, sev, registry=reg, **_glitchtip_link_kwargs(ctx)
+        issue,
+        sev,
+        registry=reg,
+        summary_mode=ctx.is_summary,
+        **_glitchtip_link_kwargs(ctx),
     )
 
 
@@ -905,27 +909,64 @@ def _new_issues_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
             "Новые логи появятся в следующем отчёте.</p>"
         )
     elif not ctx.new_issues:
-        body = '<p class="stub-card">✅ <strong>Новых логов нет</strong> — всё уже было известно.</p>'
+        empty = (
+            "✅ <strong>Новых логов за сегодня нет</strong>."
+            if ctx.is_summary
+            else "✅ <strong>Новых логов нет</strong> — всё уже было известно."
+        )
+        note = (
+            '<p class="stub-card" style="margin-bottom:12px">'
+            "Логи с <strong>first_seen</strong> за сегодня (МСК) по всем issue проекта.</p>"
+            if ctx.is_summary
+            else ""
+        )
+        body = f"{note}<p class=\"stub-card\">{empty}</p>"
     else:
+        note = (
+            '<p class="stub-card" style="margin-bottom:12px">'
+            "Логи с <strong>first_seen</strong> за сегодня (МСК) по всем issue проекта.</p>"
+            if ctx.is_summary
+            else ""
+        )
         cards = []
         for item in ctx.new_issues[:25]:
             a = _analyze(item.issue, item.severity, ctx, reg)
             sev_label, _, _ = _SEV[item.severity]
             first = fmt_date_ru(item.issue.first_seen)
             link = _glitchtip_link_html(a.glitchtip_url)
+            module_line = (
+                f'<p class="new-meta"><strong>Модуль:</strong> {_esc(a.module)}</p>'
+                if ctx.is_summary and a.module
+                else ""
+            )
+            what_block = (
+                f'<p class="issue-block"><strong>🔍 Что случилось:</strong> '
+                f"{_esc(a.what_happened)}</p>"
+                if ctx.is_summary
+                else ""
+            )
+            title = (
+                f'<p class="new-title">{_title_link_html(a.tracker_title, a.glitchtip_url)}</p>'
+                if ctx.is_summary
+                else f'<p class="new-title">{_esc(a.tracker_title)}</p>'
+            )
+            badge = "СЕГОДНЯ" if ctx.is_summary else "НОВОЕ"
             cards.append(
                 f'<div class="new-card">'
-                f'<span class="new-badge">НОВОЕ</span>'
-                f'<p class="new-title">{_esc(a.tracker_title)}</p>'
+                f'<span class="new-badge">{badge}</span>'
+                f"{title}"
                 f'<p class="new-meta">{_esc(sev_label)} · {_esc(item.environment)} · '
                 f"первый раз: {_esc(first)} · повторов: {item.issue.count}</p>"
                 f'<p class="new-meta">{_esc(item.deploy_hint)}</p>'
-                f"{link}</div>"
+                f"{module_line}{what_block}"
+                f"{'' if ctx.is_summary else link}"
+                f"</div>"
             )
         rest = len(ctx.new_issues) - min(25, len(ctx.new_issues))
         more = f'<p class="new-meta">… ещё {rest}</p>' if rest > 0 else ""
-        body = f'<div class="new-section">{"".join(cards)}{more}</div>'
-    return f'<section class="section"><h2 class="section-title">🆕 Новые логи</h2>{body}</section>'
+        body = f'{note}<div class="new-section">{"".join(cards)}{more}</div>'
+    section_title = "🆕 Новые логи за сегодня" if ctx.is_summary else "🆕 Новые логи"
+    return f'<section class="section"><h2 class="section-title">{section_title}</h2>{body}</section>'
 
 
 def _charts_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
@@ -965,17 +1006,24 @@ def _issue_card_html(
         else ""
     )
     dev_block = ""
-    if analysis.dev_hypothesis:
-        dev_block = (
-            f'<p class="issue-block"><strong>💡 Предположение:</strong> '
-            f"{_esc(analysis.dev_hypothesis)}</p>"
-        )
-    elif analysis.dev_questions:
-        q_html = "".join(f"<li>{_esc(q)}</li>" for q in analysis.dev_questions)
-        dev_block = (
-            '<p class="issue-block"><strong>❓ Уточнить у разработчика:</strong></p>'
-            f'<ul class="issue-questions">{q_html}</ul>'
-        )
+    user_block = (
+        f'<p class="issue-block"><strong>💥 Что видит пользователь:</strong> '
+        f"{_esc(analysis.user_visible)}</p>"
+    )
+    if not ctx.is_summary:
+        if analysis.dev_hypothesis:
+            dev_block = (
+                f'<p class="issue-block"><strong>💡 Предположение:</strong> '
+                f"{_esc(analysis.dev_hypothesis)}</p>"
+            )
+        elif analysis.dev_questions:
+            q_html = "".join(f"<li>{_esc(q)}</li>" for q in analysis.dev_questions)
+            dev_block = (
+                '<p class="issue-block"><strong>❓ Уточнить у разработчика:</strong></p>'
+                f'<ul class="issue-questions">{q_html}</ul>'
+            )
+    else:
+        user_block = ""
     link = _glitchtip_link_html(analysis.glitchtip_url)
     history_line = _esc(
         f"Существует: {analysis.history.exists_days} дн. "
@@ -992,7 +1040,7 @@ def _issue_card_html(
   <div class="issue-body">
     <p class="issue-block"><strong>🔍 Что случилось:</strong> {_esc(analysis.what_happened)}</p>
     {module_line}
-    <p class="issue-block"><strong>💥 Что видит пользователь:</strong> {_esc(analysis.user_visible)}</p>
+    {user_block}
     <p class="issue-block"><strong>⚠️ Риск:</strong> {_risk_badge_html(analysis.risk_css, analysis.risk_label)}</p>
     {dev_block}
   </div>
