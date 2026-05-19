@@ -44,6 +44,12 @@ def test_registry_makes_duplicate_titles_unique():
 def test_glitchtip_url_format():
     from qa_release_bot.issue_titles import glitchtip_issue_url
 
-    assert glitchtip_issue_url("https://glitchtip.example/", "42") == (
-        "https://glitchtip.example/issues/42/"
+    assert glitchtip_issue_url(
+        "https://glitchtip.example/",
+        "3985",
+        "vetmanager",
+        "14",
+    ) == (
+        "https://glitchtip.example/vetmanager/issues/3985?project=14"
     )
+    assert glitchtip_issue_url("https://glitchtip.example/", "42", "vetmanager", "") == ""

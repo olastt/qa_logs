@@ -102,10 +102,12 @@ class SingleProjectSummaryRunner:
             by_sev[IssueSeverity.HIGH],
         )
 
+        summary_project_id = next((i.project_id for i in raw if i.project_id), "")
         summary = SummaryReport(
             product_name=ref["name"],
             instance=ref["instance"],
             project_slug=project.slug,
+            project_id=summary_project_id,
             fetched_at=fetched_at,
             decision=decision,
             total_unresolved=len(raw),
@@ -138,6 +140,7 @@ class SingleProjectSummaryRunner:
                 html_path,
                 store=self._snapshots,
                 glitchtip_base_url=base_url,
+                glitchtip_org_slug=self._settings.glitchtip_org_slug,
             )
             print(format_html_message(html_path), file=sys.stderr)
 

@@ -44,6 +44,7 @@ class GlitchtipClient:
         self._base_url = base_url.strip().rstrip("/")
         clean_token = token.strip()
         self._opts = options or ApiClientOptions()
+        self._project_id_cache: dict[tuple[str, str], str] = {}
         self._client = httpx.Client(
             base_url=self._base_url,
             headers={"Authorization": f"Bearer {clean_token}"},
@@ -136,6 +137,7 @@ class GlitchtipClient:
             i.id for i in issues_sorted[: self._opts.enrich_stack_max_issues]
         }
 
+        fallback_project_id = self._lookup_project_id(project)
         records: list[IssueRecord] = []
         enriched = 0
         for issue in issues:
@@ -154,6 +156,9 @@ class GlitchtipClient:
                     last_seen=issue.last_seen,
                     first_seen=issue.first_seen,
                     culprit=issue.culprit,
+                    org_slug=project.org_slug,
+                    project_slug=project.slug,
+                    project_id=issue.project_numeric_id or fallback_project_id,
                     stack_frames=frames[:5],
                     metadata=issue.metadata,
                 )
@@ -193,6 +198,28 @@ class GlitchtipClient:
         except Exception:
             return []
 
+    def _lookup_project_id(self, project: GlitchtipProjectRef) -> str:
+        key = (project.org_slug, project.slug)
+        if key in self._project_id_cache:
+            return self._project_id_cache[key]
+        found = ""
+        try:
+            for item in self.list_projects():
+                if not isinstance(item, dict):
+                    continue
+                slug = item.get("slug") or ""
+                org = ""
+                org_raw = item.get("organization")
+                if isinstance(org_raw, dict):
+                    org = str(org_raw.get("slug") or "")
+                if slug == project.slug and (not org or org == project.org_slug):
+                    found = str(item.get("id") or "")
+                    break
+        except Exception:
+            log.warning("project_id_lookup_failed", slug=project.slug)
+        self._project_id_cache[key] = found
+        return found
+
     @staticmethod
     def _parse_issue(raw: dict[str, Any], project: GlitchtipProjectRef) -> GlitchtipIssue:
         metadata = raw.get("metadata") or {}
@@ -208,8 +235,18 @@ class GlitchtipClient:
             user_count=int(raw.get("userCount") or 0),
             first_seen=_parse_dt(raw.get("firstSeen")),
             last_seen=_parse_dt(raw.get("lastSeen")),
+            project_numeric_id=_project_id_from_raw(raw),
             metadata=metadata,
         )
+
+
+def _project_id_from_raw(raw: dict[str, Any]) -> str:
+    proj = raw.get("project")
+    if isinstance(proj, dict) and proj.get("id") is not None:
+        return str(proj["id"])
+    if proj is not None and not isinstance(proj, dict):
+        return str(proj)
+    return ""
 
 
 def _parse_dt(value: str | None) -> datetime:

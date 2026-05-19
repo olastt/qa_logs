@@ -28,6 +28,9 @@ def test_render_html_contains_design_elements():
                 last_seen=now,
                 first_seen=now,
                 culprit="",
+                org_slug="vetmanager",
+                project_slug="vetmanager-extjs-test",
+                project_id="14",
             )
         ],
         mediums=[
@@ -53,7 +56,7 @@ def test_render_html_contains_design_elements():
     assert "QA Release Report" in html
     assert "■■" not in html
     assert "glitchtip-link" in html
-    assert "https://glitchtip.example/issues/1/" in html
+    assert "https://glitchtip.example/vetmanager/issues/1?project=14" in html
     assert "Впервые" in html
     assert "добавить в карту модулей" not in html
 

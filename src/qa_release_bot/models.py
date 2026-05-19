@@ -41,6 +41,7 @@ class GlitchtipIssue:
     user_count: int
     first_seen: datetime
     last_seen: datetime
+    project_numeric_id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property

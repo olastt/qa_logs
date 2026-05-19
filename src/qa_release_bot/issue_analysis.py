@@ -41,6 +41,8 @@ def analyze_issue_full(
     *,
     registry: IssueTitleRegistry | None = None,
     glitchtip_base_url: str = "",
+    glitchtip_org_slug: str = "",
+    glitchtip_project_id: str = "",
     module_map: dict[str, str] | None = None,
 ) -> IssueAnalysisFull:
     reg = registry or IssueTitleRegistry()
@@ -69,7 +71,12 @@ def analyze_issue_full(
         tracker_title=tracker,
         history=history,
         is_stale=is_stale(issue),
-        glitchtip_url=glitchtip_issue_url(glitchtip_base_url, issue.id),
+        glitchtip_url=glitchtip_issue_url(
+            glitchtip_base_url,
+            issue.id,
+            issue.org_slug or glitchtip_org_slug,
+            issue.project_id or glitchtip_project_id,
+        ),
         group_tag=resolution.short_tag,
         controller_key=resolution.controller_key,
         is_unmapped_controller=bool(resolution.controller_key and not resolution.is_mapped),

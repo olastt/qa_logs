@@ -464,6 +464,8 @@ class HtmlPageContext:
     show_diff: bool = True
     is_summary: bool = False
     glitchtip_base_url: str = ""
+    glitchtip_org_slug: str = ""
+    glitchtip_project_id: str = ""
 
 
 def default_analyst_html_path(output_dir: Path, fetched_at: datetime) -> Path:
@@ -483,6 +485,7 @@ def build_analyst_html_context(
     *,
     trend_env: str = "stage",
     glitchtip_base_url: str = "",
+    glitchtip_org_slug: str = "",
 ) -> HtmlPageContext:
     labels, values = [], []
     if store:
@@ -513,6 +516,7 @@ def build_analyst_html_context(
         stage_unique_count=report.stage_unique_count,
         shared_count=report.shared_count,
         glitchtip_base_url=glitchtip_base_url.rstrip("/"),
+        glitchtip_org_slug=glitchtip_org_slug,
     )
 
 
@@ -521,6 +525,7 @@ def build_summary_html_context(
     store: SnapshotStore | None = None,
     *,
     glitchtip_base_url: str = "",
+    glitchtip_org_slug: str = "",
 ) -> HtmlPageContext:
     return HtmlPageContext(
         page_title="Сводка логов",
@@ -545,6 +550,8 @@ def build_summary_html_context(
         show_diff=False,
         is_summary=True,
         glitchtip_base_url=glitchtip_base_url.rstrip("/"),
+        glitchtip_org_slug=glitchtip_org_slug,
+        glitchtip_project_id=report.project_id,
     )
 
 
@@ -554,12 +561,16 @@ def write_analyst_html(
     *,
     store: SnapshotStore | None = None,
     glitchtip_base_url: str = "",
+    glitchtip_org_slug: str = "",
     registry: object | None = None,
 ) -> Path:
     from qa_release_bot.issue_titles import IssueTitleRegistry
 
     ctx = build_analyst_html_context(
-        report, store, glitchtip_base_url=glitchtip_base_url
+        report,
+        store,
+        glitchtip_base_url=glitchtip_base_url,
+        glitchtip_org_slug=glitchtip_org_slug,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     reg = registry if isinstance(registry, IssueTitleRegistry) else IssueTitleRegistry()
@@ -573,12 +584,16 @@ def write_summary_html(
     *,
     store: SnapshotStore | None = None,
     glitchtip_base_url: str = "",
+    glitchtip_org_slug: str = "",
     registry: object | None = None,
 ) -> Path:
     from qa_release_bot.issue_titles import IssueTitleRegistry
 
     ctx = build_summary_html_context(
-        report, store, glitchtip_base_url=glitchtip_base_url
+        report,
+        store,
+        glitchtip_base_url=glitchtip_base_url,
+        glitchtip_org_slug=glitchtip_org_slug,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     reg = registry if isinstance(registry, IssueTitleRegistry) else IssueTitleRegistry()
@@ -680,36 +695,28 @@ def _diff_row_class(status: str) -> str:
     return ""
 
 
+def _glitchtip_link_kwargs(ctx: HtmlPageContext) -> dict[str, str]:
+    return {
+        "glitchtip_base_url": ctx.glitchtip_base_url,
+        "glitchtip_org_slug": ctx.glitchtip_org_slug,
+        "glitchtip_project_id": ctx.glitchtip_project_id,
+    }
+
+
 def _warm_registry(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> None:
+    link = _glitchtip_link_kwargs(ctx)
     for issue in ctx.blockers:
         analyze_issue_full(
-            issue,
-            IssueSeverity.BLOCKER,
-            registry=reg,
-            glitchtip_base_url=ctx.glitchtip_base_url,
+            issue, IssueSeverity.BLOCKER, registry=reg, **link
         )
     for issue in ctx.highs:
-        analyze_issue_full(
-            issue, IssueSeverity.HIGH, registry=reg, glitchtip_base_url=ctx.glitchtip_base_url
-        )
+        analyze_issue_full(issue, IssueSeverity.HIGH, registry=reg, **link)
     for issue in ctx.mediums:
-        analyze_issue_full(
-            issue,
-            IssueSeverity.MEDIUM,
-            registry=reg,
-            glitchtip_base_url=ctx.glitchtip_base_url,
-        )
+        analyze_issue_full(issue, IssueSeverity.MEDIUM, registry=reg, **link)
     for issue in ctx.lows:
-        analyze_issue_full(
-            issue, IssueSeverity.LOW, registry=reg, glitchtip_base_url=ctx.glitchtip_base_url
-        )
+        analyze_issue_full(issue, IssueSeverity.LOW, registry=reg, **link)
     for item in ctx.new_issues:
-        analyze_issue_full(
-            item.issue,
-            item.severity,
-            registry=reg,
-            glitchtip_base_url=ctx.glitchtip_base_url,
-        )
+        analyze_issue_full(item.issue, item.severity, registry=reg, **link)
 
 
 def _analyze(
@@ -719,7 +726,7 @@ def _analyze(
     reg: IssueTitleRegistry,
 ) -> IssueAnalysisFull:
     return analyze_issue_full(
-        issue, sev, registry=reg, glitchtip_base_url=ctx.glitchtip_base_url
+        issue, sev, registry=reg, **_glitchtip_link_kwargs(ctx)
     )
 
 

@@ -75,6 +75,9 @@ def dedupe_by_title(issues: list[IssueRecord]) -> list[IssueRecord]:
             last_seen=max(prev.last_seen, issue.last_seen),
             first_seen=_earlier(prev.first_seen, issue.first_seen),
             culprit=issue.culprit or prev.culprit,
+            org_slug=prev.org_slug or issue.org_slug,
+            project_slug=prev.project_slug or issue.project_slug,
+            project_id=prev.project_id or issue.project_id,
             stack_frames=issue.stack_frames or prev.stack_frames,
             metadata=issue.metadata or prev.metadata,
         )

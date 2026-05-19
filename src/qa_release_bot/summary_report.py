@@ -22,6 +22,7 @@ class SummaryReport:
     fetched_at: datetime
     decision: ReleaseDecision
     total_unresolved: int
+    project_id: str = ""
     blockers: list[IssueRecord] = field(default_factory=list)
     highs: list[IssueRecord] = field(default_factory=list)
     mediums: list[IssueRecord] = field(default_factory=list)

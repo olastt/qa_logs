@@ -28,6 +28,9 @@ class IssueRecord:
     last_seen: datetime
     first_seen: datetime
     culprit: str
+    org_slug: str = ""
+    project_slug: str = ""
+    project_id: str = ""
     stack_frames: list[StackFrame] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -40,6 +43,9 @@ class IssueRecord:
             "last_seen": _iso(self.last_seen),
             "first_seen": _iso(self.first_seen),
             "culprit": self.culprit,
+            "org_slug": self.org_slug,
+            "project_slug": self.project_slug,
+            "project_id": self.project_id,
             "stack_frames": [asdict(f) for f in self.stack_frames[:5]],
         }
 
@@ -53,6 +59,9 @@ class IssueRecord:
             last_seen=_parse_iso(raw.get("last_seen")),
             first_seen=_parse_iso(raw.get("first_seen")),
             culprit=raw.get("culprit") or "",
+            org_slug=str(raw.get("org_slug") or ""),
+            project_slug=str(raw.get("project_slug") or ""),
+            project_id=str(raw.get("project_id") or ""),
             stack_frames=[
                 StackFrame(
                     filename=f.get("filename") or "",

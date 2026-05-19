@@ -168,6 +168,7 @@ class QAAnalystRunner:
                 html_path,
                 store=self._snapshots,
                 glitchtip_base_url=base_url,
+                glitchtip_org_slug=self._settings.glitchtip_org_slug,
             )
             print(format_html_message(html_path), file=sys.stderr)
 

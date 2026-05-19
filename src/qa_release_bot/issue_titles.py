@@ -27,11 +27,19 @@ class IssueTitleRegistry:
         return f"{base} — {hint}"
 
 
-def glitchtip_issue_url(base_url: str, issue_id: str) -> str:
+def glitchtip_issue_url(
+    base_url: str,
+    issue_id: str,
+    org_slug: str,
+    project_id: str,
+) -> str:
+    """UI Glitchtip: /{org}/issues/{id}?project={numeric_id}."""
     root = (base_url or "").rstrip("/")
-    if not root:
+    org = (org_slug or "").strip().strip("/")
+    pid = str(project_id or "").strip()
+    if not root or not org or not pid or not issue_id:
         return ""
-    return f"{root}/issues/{issue_id}/"
+    return f"{root}/{org}/issues/{issue_id}?project={pid}"
 
 
 def generate_tracker_title(
