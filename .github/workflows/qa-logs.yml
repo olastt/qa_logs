@@ -157,15 +157,14 @@ jobs:
               urls.append(f"https://{domain}")
           Path("reports/surge_urls.txt").write_text("\n".join(urls), encoding="utf-8")
           print("Deployed:", urls)
+          if not urls:
+              raise SystemExit("No HTML reports deployed to Surge")
           PY
-          if [ -f reports/surge_urls.txt ]; then
-            echo "report_urls<<EOF" >> $GITHUB_OUTPUT
-            cat reports/surge_urls.txt >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          fi
 
       - name: Patch Bitrix message with report URLs
-        if: always() && steps.run.outcome == 'success' && steps.surge.outcome == 'success'
+        if: always() && steps.run.outcome == 'success'
+        env:
+          PYTHONPATH: src
         run: |
           python3 - <<'PY'
           import json
@@ -174,16 +173,20 @@ jobs:
           from qa_release_bot.run_facade import notify_with_url
 
           out = Path("reports")
+          if not (out / "ci_surge.json").is_file():
+              raise SystemExit(0)
           surge = json.loads((out / "ci_surge.json").read_text(encoding="utf-8"))
-          url_by_project = {}
+          url_by_project: dict[str, str] = {}
           urls_file = out / "surge_urls.txt"
           if urls_file.is_file():
-              deployed = [u.strip() for u in urls_file.read_text(encoding="utf-8").splitlines() if u.strip()]
+              deployed = [
+                  u.strip()
+                  for u in urls_file.read_text(encoding="utf-8").splitlines()
+                  if u.strip()
+              ]
               for i, job in enumerate(surge):
                   if i < len(deployed):
                       url_by_project[job["project_id"]] = deployed[i]
-                  elif job.get("domain"):
-                      url_by_project[job["project_id"]] = f"https://{job['domain']}"
 
           parts = []
           for job in surge:
@@ -193,7 +196,8 @@ jobs:
                   continue
               meta = json.loads(meta_path.read_text(encoding="utf-8"))
               text = str(meta.get("notify_text", ""))
-              url = url_by_project.get(pid, "")
+              domain = (job.get("domain") or meta.get("surge_domain") or "").strip()
+              url = url_by_project.get(pid) or (f"https://{domain}" if domain else "")
               parts.append(notify_with_url(text, url))
 
           if parts:
@@ -204,6 +208,7 @@ jobs:
         if: always() && steps.params.outputs.notify == 'true'
         continue-on-error: true
         env:
+          PYTHONPATH: src
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
           BITRIX_CHAT_ID: ${{ secrets.BITRIX_CHAT_ID }}
         run: |

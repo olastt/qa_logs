@@ -52,7 +52,8 @@ def run_release(
     )
 
     domain = surge_domain(project_id, "release")
-    notify = format_release_notify(project_id, report, "")
+    report_url = f"https://{domain}"
+    notify = format_release_notify(project_id, report, report_url)
     html_path = _latest_html(out_dir, "qa_report_*.html")
     _write_ci_meta(
         out_dir,
@@ -104,11 +105,12 @@ def run_summary(
     )
 
     domain = surge_domain(project_id, "summary")
+    report_url = f"https://{domain}"
     notify = format_summary_notify(
         project_id,
         summary,
         disappeared_count=summary.disappeared_count,
-        report_url="",
+        report_url=report_url,
     )
     html_glob = f"summary_*{summary.project_slug.replace('/', '-')}*.html"
     html_path = _latest_html(out_dir, html_glob) or _latest_html(out_dir, "summary_*.html")
