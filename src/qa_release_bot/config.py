@@ -196,7 +196,8 @@ def build_summary_ref(
         }
 
     if name:
-        resolved = _resolve_summary_config_name(name, raw)
+        cfg = report_config or load_report_config()
+        resolved = _resolve_summary_config_name(name, cfg)
         for r in refs:
             if r["name"] == resolved:
                 return r

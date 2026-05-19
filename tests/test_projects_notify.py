@@ -14,6 +14,11 @@ from qa_release_bot.projects import surge_domain, validate_command_project
 from qa_release_bot.release_decision import ReleaseDecision
 
 
+def test_build_summary_ref_cli_alias():
+    ref = build_summary_ref(Settings(), load_report_config(), name="webapps-widgets")
+    assert ref["name"] == "webapps-widgets-test"
+
+
 def test_validate_command_project_mismatch():
     with pytest.raises(ValueError, match="Проверить релиз"):
         validate_command_project("summary", "vetmanager-extjs")
