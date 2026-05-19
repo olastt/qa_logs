@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from qa_release_bot.models import GlitchtipProjectRef
@@ -26,6 +26,20 @@ class Settings(BaseSettings):
     glitchtip_hetzner_token: str = Field(default="", alias="GLITCHTIP_HETZNER_TOKEN")
     glitchtip_selectel_url: str = Field(default="", alias="GLITCHTIP_SELECTEL_URL")
     glitchtip_selectel_token: str = Field(default="", alias="GLITCHTIP_SELECTEL_TOKEN")
+
+    @field_validator(
+        "glitchtip_org_slug",
+        "glitchtip_hetzner_url",
+        "glitchtip_hetzner_token",
+        "glitchtip_selectel_url",
+        "glitchtip_selectel_token",
+        mode="before",
+    )
+    @classmethod
+    def _strip_env_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
 
 def load_instances_config(path: Path | None = None) -> dict[str, Any]:
@@ -68,9 +82,15 @@ def build_project_refs(
 
 def instance_credentials(settings: Settings, instance: str) -> tuple[str, str]:
     if instance == "hetzner":
-        return settings.glitchtip_hetzner_url.rstrip("/"), settings.glitchtip_hetzner_token
+        return (
+            settings.glitchtip_hetzner_url.strip().rstrip("/"),
+            settings.glitchtip_hetzner_token.strip(),
+        )
     if instance == "selectel":
-        return settings.glitchtip_selectel_url.rstrip("/"), settings.glitchtip_selectel_token
+        return (
+            settings.glitchtip_selectel_url.strip().rstrip("/"),
+            settings.glitchtip_selectel_token.strip(),
+        )
     raise ValueError(f"Unknown instance: {instance}")
 
 

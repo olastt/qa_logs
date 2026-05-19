@@ -25,6 +25,8 @@ qa-release-bot poll
 
 Токены только в `.env`, не в репозитории.
 
+При вставке в GitHub Secrets **без пробела в конце** — иначе была ошибка `Illegal header value`.
+
 ## GitHub Actions
 
 Вкладка **Actions → QA Logs (Glitchtip) → Run workflow** — ручной запуск с выбором команды.

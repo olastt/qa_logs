@@ -9,6 +9,7 @@ __pycache__/
 data/
 reports/
 snapshots/
+surge-pub/
 *.egg-info/
 dist/
 build/

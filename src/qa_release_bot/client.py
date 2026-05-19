@@ -36,11 +36,12 @@ class GlitchtipClient:
         timeout: float = 60.0,
         options: ApiClientOptions | None = None,
     ) -> None:
-        self._base_url = base_url.rstrip("/")
+        self._base_url = base_url.strip().rstrip("/")
+        clean_token = token.strip()
         self._opts = options or ApiClientOptions()
         self._client = httpx.Client(
             base_url=self._base_url,
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {clean_token}"},
             timeout=timeout,
         )
 

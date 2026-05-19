@@ -90,6 +90,13 @@ jobs:
           POLL_INTERVAL_SEC: "300"
           STATE_DB_PATH: data/state.db
         run: |
+          # Лишний пробел/перенос в Secret ломает httpx: Illegal header value b'... '
+          trim() { printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          export GLITCHTIP_HETZNER_URL="$(trim "$GLITCHTIP_HETZNER_URL")"
+          export GLITCHTIP_HETZNER_TOKEN="$(trim "$GLITCHTIP_HETZNER_TOKEN")"
+          export GLITCHTIP_SELECTEL_URL="$(trim "$GLITCHTIP_SELECTEL_URL")"
+          export GLITCHTIP_SELECTEL_TOKEN="$(trim "$GLITCHTIP_SELECTEL_TOKEN")"
+          export GLITCHTIP_ORG_SLUG="$(trim "$GLITCHTIP_ORG_SLUG")"
           ARGS="--command ${{ steps.params.outputs.command }}"
           ARGS="$ARGS --summary-name ${{ steps.params.outputs.summary_name }}"
           if [ "${{ steps.params.outputs.no_stack }}" = "true" ]; then
@@ -112,7 +119,7 @@ jobs:
 
       - name: Deploy HTML to Surge
         id: surge
-        if: always() && steps.params.outputs.needs_surge == 'true'
+        if: always() && steps.params.outputs.needs_surge == 'true' && steps.run.outcome == 'success'
         env:
           SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
           SURGE_REPORT_DOMAIN: ${{ secrets.SURGE_REPORT_DOMAIN }}
@@ -129,7 +136,7 @@ jobs:
             exit 1
           fi
           if [ "${{ steps.params.outputs.command }}" = "summary" ]; then
-            DOMAIN="${SURGE_SUMMARY_DOMAIN:-$SURGE_QA_LOGS_DOMAIN}"
+            DOMAIN="${SURGE_SUMMARY_DOMAIN:-${SURGE_REPORT_DOMAIN:-$SURGE_QA_LOGS_DOMAIN}}"
           else
             DOMAIN="${SURGE_REPORT_DOMAIN:-$SURGE_QA_LOGS_DOMAIN}"
           fi
@@ -137,6 +144,8 @@ jobs:
             echo "Set SURGE_REPORT_DOMAIN / SURGE_SUMMARY_DOMAIN or SURGE_QA_LOGS_DOMAIN"
             exit 1
           fi
+          DOMAIN="$(echo -n "$DOMAIN" | tr -d '[:space:]')"
+          SURGE_TOKEN="$(echo -n "$SURGE_TOKEN" | tr -d '[:space:]')"
           npm install -g surge@latest
           mkdir -p surge-pub && cp "$HTML" surge-pub/index.html
           surge surge-pub "$DOMAIN" --token "$SURGE_TOKEN"
