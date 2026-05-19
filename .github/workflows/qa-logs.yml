@@ -119,12 +119,13 @@ jobs:
           surge surge-pub "$DOMAIN" --token ${{ secrets.SURGE_TOKEN }}
           echo "REPORT_URL=https://${DOMAIN}" >> $GITHUB_ENV
 
-      - name: Send Bitrix24 notification
+      - name: Send Bitrix24 notification (HTML в чат)
         if: always() && steps.params.outputs.notify == 'true'
         continue-on-error: true
         env:
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
           BITRIX_CHAT_ID: ${{ secrets.BITRIX_CHAT_ID }}
+          REPORT_URL: ${{ env.REPORT_URL }}
         run: |
           python3 - <<'EOF'
           import os
@@ -132,14 +133,14 @@ jobs:
           from pathlib import Path
 
           sys.path.insert(0, "scripts")
-          from bitrix_notify import send_message
+          from bitrix_notify import publish_report, send_message
 
           cmd = "${{ steps.params.outputs.command }}"
           run_url = (
               "${{ github.server_url }}/${{ github.repository }}"
               f"/actions/runs/${{ github.run_id }}"
           )
-          report_url = os.environ.get("REPORT_URL", "")
+          report_url = (os.environ.get("REPORT_URL") or "").strip() or None
 
           if Path("reports/ci_message.txt").is_file():
               message = Path("reports/ci_message.txt").read_text(encoding="utf-8")
@@ -150,14 +151,23 @@ jobs:
               message = (
                   f"❌ QA Release Bot — сбой или пустой результат\n"
                   f"Команда: {cmd}\n"
-                  f"Run: {run_url}\n"
               )
               if log_tail.strip():
                   message += f"\n--- лог (хвост) ---\n{log_tail}"
 
           message += f"\n\n🔗 Actions: {run_url}"
-          if report_url:
-              message += f"\n📊 HTML: {report_url}"
 
-          send_message(message)
+          html_path = None
+          if Path("reports/ci_html_path.txt").is_file():
+              p = Path(Path("reports/ci_html_path.txt").read_text(encoding="utf-8").strip())
+              if p.is_file():
+                  html_path = p
+          if not html_path:
+              htmls = sorted(Path("reports").glob("*.html"), key=lambda x: x.stat().st_mtime, reverse=True)
+              html_path = htmls[0] if htmls else None
+
+          if html_path or report_url:
+              publish_report(message, html_path=html_path, report_url=report_url)
+          else:
+              send_message(message)
           EOF

@@ -47,9 +47,12 @@ qa-release-bot poll
 | `GLITCHTIP_SELECTEL_URL` | URL Selectel Glitchtip |
 | `GLITCHTIP_SELECTEL_TOKEN` | API token |
 | `GLITCHTIP_ORG_SLUG` | `vetmanager` |
-| `BITRIX_WEBHOOK_URL` | Webhook Bitrix24 (без `/im.message.add`) |
+| `BITRIX_WEBHOOK_URL` | Webhook Bitrix24 (без `/im.message.add`), scope: **im** + **disk** |
 | `BITRIX_CHAT_ID` | ID чата |
-| `SURGE_TOKEN` | (опционально) публикация HTML |
-| `SURGE_QA_LOGS_DOMAIN` | (опционально) домен Surge |
+| `SURGE_TOKEN` | (опционально) ссылка на отчёт в браузере |
+| `SURGE_QA_LOGS_DOMAIN` | (опционально) домен Surge, напр. `qa-logs.surge.sh` |
 
-Артефакты: `reports/*.html`, markdown и лог run.
+**HTML в чат Bitrix24:** после `report` / `summary` в чат уходит файл `.html` (скачать и открыть в браузере).  
+Если заданы `SURGE_*` — дополнительно кнопка-ссылка на онлайн-версию.
+
+Артефакты Actions: `reports/*.html`, markdown и лог run.

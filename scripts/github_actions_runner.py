@@ -23,9 +23,16 @@ from qa_release_bot.qa_analyst_runner import QAAnalystRunner  # noqa: E402
 from qa_release_bot.summary_runner import SingleProjectSummaryRunner  # noqa: E402
 
 
-def _latest_html(out_dir: Path, pattern: str) -> str | None:
+def _latest_html(out_dir: Path, pattern: str) -> Path | None:
     files = sorted(out_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-    return str(files[0]) if files else None
+    return files[0] if files else None
+
+
+def _save_ci_artifacts(out_dir: Path, message: str, html: Path | None) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "ci_message.txt").write_text(message, encoding="utf-8")
+    if html and html.is_file():
+        (out_dir / "ci_html_path.txt").write_text(str(html.resolve()), encoding="utf-8")
 
 
 def _run_report(settings: Settings, *, no_stack: bool) -> str:
@@ -42,7 +49,7 @@ def _run_report(settings: Settings, *, no_stack: bool) -> str:
         print_console=False,
         enrich_stack=False if no_stack else None,
     )
-    html = _latest_html(out_dir, "qa_report_*.html")
+    html_path = _latest_html(out_dir, "qa_report_*.html")
     lines = [
         "🐾 QA Release Bot — отчёт vetmanager-extjs (test + stage)",
         f"📅 {report.fetched_at.strftime('%Y-%m-%d %H:%M UTC')}",
@@ -58,11 +65,13 @@ def _run_report(settings: Settings, *, no_stack: bool) -> str:
         lines.append("Топ проблем:")
         for item in report.decision.items[:8]:
             lines.append(f"• {item}")
-    if html:
+    if html_path:
         lines.append("")
-        lines.append(f"📄 HTML: {html} (артефакт Actions)")
+        lines.append(f"📄 HTML: {html_path.name} (будет в чате Bitrix)")
     lines.append(f"📝 Markdown: {md_path.name}")
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    _save_ci_artifacts(out_dir, text, html_path)
+    return text
 
 
 def _run_summary(settings: Settings, name: str, *, no_stack: bool) -> str:
@@ -80,9 +89,9 @@ def _run_summary(settings: Settings, name: str, *, no_stack: bool) -> str:
         print_console=False,
         enrich_stack=False if no_stack else None,
     )
-    html = _latest_html(out_dir, f"summary_{summary.project_slug.replace('/', '-')}_*.html")
-    if not html:
-        html = _latest_html(out_dir, "summary_*.html")
+    html_path = _latest_html(out_dir, f"summary_{summary.project_slug.replace('/', '-')}_*.html")
+    if not html_path:
+        html_path = _latest_html(out_dir, "summary_*.html")
 
     lines = [
         f"🐾 QA Release Bot — сводка {summary.product_name}",
@@ -99,10 +108,12 @@ def _run_summary(settings: Settings, name: str, *, no_stack: bool) -> str:
         lines.append("")
         for item in summary.decision.items[:8]:
             lines.append(f"• {item}")
-    if html:
+    if html_path:
         lines.append("")
-        lines.append(f"📄 HTML: {html} (артефакт Actions)")
-    return "\n".join(lines)
+        lines.append(f"📄 HTML: {html_path.name} (будет в чате Bitrix)")
+    text = "\n".join(lines)
+    _save_ci_artifacts(out_dir, text, html_path)
+    return text
 
 
 def _run_once(settings: Settings) -> str:
@@ -154,14 +165,12 @@ def main() -> None:
         raise
 
     print(message)
-    summary_file = ROOT / "reports" / "ci_message.txt"
-    summary_file.parent.mkdir(parents=True, exist_ok=True)
-    summary_file.write_text(message, encoding="utf-8")
-
-    if args.notify:
-        from bitrix_notify import send_message
-
-        send_message(message)
+    cfg = load_report_config()
+    out_dir = Path(report_output_dir(cfg))
+    if args.command in ("run-once", "list-projects"):
+        _save_ci_artifacts(out_dir, message, None)
+    elif not (out_dir / "ci_message.txt").is_file():
+        _save_ci_artifacts(out_dir, message, None)
 
 
 if __name__ == "__main__":
