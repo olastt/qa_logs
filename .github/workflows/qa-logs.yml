@@ -62,15 +62,21 @@ jobs:
         id: params
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "command=${{ github.event.inputs.command }}" >> $GITHUB_OUTPUT
+            CMD="${{ github.event.inputs.command }}"
             echo "summary_name=${{ github.event.inputs.summary_name }}" >> $GITHUB_OUTPUT
             echo "no_stack=${{ github.event.inputs.no_stack }}" >> $GITHUB_OUTPUT
             echo "notify=${{ github.event.inputs.notify_bitrix }}" >> $GITHUB_OUTPUT
           else
-            echo "command=report" >> $GITHUB_OUTPUT
+            CMD="report"
             echo "summary_name=webapps-widgets-test" >> $GITHUB_OUTPUT
             echo "no_stack=true" >> $GITHUB_OUTPUT
             echo "notify=true" >> $GITHUB_OUTPUT
+          fi
+          echo "command=$CMD" >> $GITHUB_OUTPUT
+          if [ "$CMD" = "report" ] || [ "$CMD" = "summary" ]; then
+            echo "needs_surge=true" >> $GITHUB_OUTPUT
+          else
+            echo "needs_surge=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Run qa-release-bot
@@ -104,28 +110,47 @@ jobs:
             run.log
           if-no-files-found: ignore
 
-      - name: Deploy HTML to Surge (optional)
-        if: always() && secrets.SURGE_QA_LOGS_DOMAIN != '' && secrets.SURGE_TOKEN != ''
-        continue-on-error: true
+      - name: Deploy HTML to Surge
+        id: surge
+        if: always() && steps.params.outputs.needs_surge == 'true'
+        env:
+          SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+          SURGE_REPORT_DOMAIN: ${{ secrets.SURGE_REPORT_DOMAIN }}
+          SURGE_SUMMARY_DOMAIN: ${{ secrets.SURGE_SUMMARY_DOMAIN }}
+          SURGE_QA_LOGS_DOMAIN: ${{ secrets.SURGE_QA_LOGS_DOMAIN }}
         run: |
           HTML=$(ls -t reports/*.html 2>/dev/null | head -1)
           if [ -z "$HTML" ]; then
-            echo "No HTML report to deploy"
-            exit 0
+            echo "HTML report not found"
+            exit 1
+          fi
+          if [ -z "$SURGE_TOKEN" ]; then
+            echo "SURGE_TOKEN secret is required"
+            exit 1
+          fi
+          if [ "${{ steps.params.outputs.command }}" = "summary" ]; then
+            DOMAIN="${SURGE_SUMMARY_DOMAIN:-$SURGE_QA_LOGS_DOMAIN}"
+          else
+            DOMAIN="${SURGE_REPORT_DOMAIN:-$SURGE_QA_LOGS_DOMAIN}"
+          fi
+          if [ -z "$DOMAIN" ]; then
+            echo "Set SURGE_REPORT_DOMAIN / SURGE_SUMMARY_DOMAIN or SURGE_QA_LOGS_DOMAIN"
+            exit 1
           fi
           npm install -g surge@latest
           mkdir -p surge-pub && cp "$HTML" surge-pub/index.html
-          DOMAIN="${{ secrets.SURGE_QA_LOGS_DOMAIN }}"
-          surge surge-pub "$DOMAIN" --token ${{ secrets.SURGE_TOKEN }}
-          echo "REPORT_URL=https://${DOMAIN}" >> $GITHUB_ENV
+          surge surge-pub "$DOMAIN" --token "$SURGE_TOKEN"
+          REPORT_URL="https://${DOMAIN}"
+          echo "REPORT_URL=$REPORT_URL" >> $GITHUB_ENV
+          echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
+          echo "Deployed: $REPORT_URL"
 
-      - name: Send Bitrix24 notification (HTML в чат)
+      - name: Send Bitrix24 notification
         if: always() && steps.params.outputs.notify == 'true'
         continue-on-error: true
         env:
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
           BITRIX_CHAT_ID: ${{ secrets.BITRIX_CHAT_ID }}
-          REPORT_URL: ${{ env.REPORT_URL }}
         run: |
           python3 - <<'EOF'
           import os
@@ -133,14 +158,14 @@ jobs:
           from pathlib import Path
 
           sys.path.insert(0, "scripts")
-          from bitrix_notify import publish_report, send_message
+          from bitrix_notify import send_message, send_report_link
 
           cmd = "${{ steps.params.outputs.command }}"
           run_url = (
               "${{ github.server_url }}/${{ github.repository }}"
               f"/actions/runs/${{ github.run_id }}"
           )
-          report_url = (os.environ.get("REPORT_URL") or "").strip() or None
+          report_url = "${{ steps.surge.outputs.report_url }}".strip()
 
           if Path("reports/ci_message.txt").is_file():
               message = Path("reports/ci_message.txt").read_text(encoding="utf-8")
@@ -157,17 +182,15 @@ jobs:
 
           message += f"\n\n🔗 Actions: {run_url}"
 
-          html_path = None
-          if Path("reports/ci_html_path.txt").is_file():
-              p = Path(Path("reports/ci_html_path.txt").read_text(encoding="utf-8").strip())
-              if p.is_file():
-                  html_path = p
-          if not html_path:
-              htmls = sorted(Path("reports").glob("*.html"), key=lambda x: x.stat().st_mtime, reverse=True)
-              html_path = htmls[0] if htmls else None
-
-          if html_path or report_url:
-              publish_report(message, html_path=html_path, report_url=report_url)
+          needs_html = cmd in ("report", "summary")
+          if needs_html and report_url:
+              send_report_link(message, report_url)
+          elif needs_html and not report_url:
+              send_message(
+                  message
+                  + "\n\n⚠️ HTML не опубликован: проверьте Surge "
+                  "(SURGE_TOKEN, SURGE_REPORT_DOMAIN / SURGE_SUMMARY_DOMAIN)"
+              )
           else:
               send_message(message)
           EOF

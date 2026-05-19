@@ -28,11 +28,9 @@ def _latest_html(out_dir: Path, pattern: str) -> Path | None:
     return files[0] if files else None
 
 
-def _save_ci_artifacts(out_dir: Path, message: str, html: Path | None) -> None:
+def _save_ci_artifacts(out_dir: Path, message: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "ci_message.txt").write_text(message, encoding="utf-8")
-    if html and html.is_file():
-        (out_dir / "ci_html_path.txt").write_text(str(html.resolve()), encoding="utf-8")
 
 
 def _run_report(settings: Settings, *, no_stack: bool) -> str:
@@ -67,10 +65,10 @@ def _run_report(settings: Settings, *, no_stack: bool) -> str:
             lines.append(f"• {item}")
     if html_path:
         lines.append("")
-        lines.append(f"📄 HTML: {html_path.name} (будет в чате Bitrix)")
+        lines.append(f"📄 HTML: {html_path.name} → Surge → Bitrix")
     lines.append(f"📝 Markdown: {md_path.name}")
     text = "\n".join(lines)
-    _save_ci_artifacts(out_dir, text, html_path)
+    _save_ci_artifacts(out_dir, text)
     return text
 
 
@@ -110,9 +108,9 @@ def _run_summary(settings: Settings, name: str, *, no_stack: bool) -> str:
             lines.append(f"• {item}")
     if html_path:
         lines.append("")
-        lines.append(f"📄 HTML: {html_path.name} (будет в чате Bitrix)")
+        lines.append(f"📄 HTML: {html_path.name} → Surge → Bitrix")
     text = "\n".join(lines)
-    _save_ci_artifacts(out_dir, text, html_path)
+    _save_ci_artifacts(out_dir, text)
     return text
 
 
@@ -168,9 +166,9 @@ def main() -> None:
     cfg = load_report_config()
     out_dir = Path(report_output_dir(cfg))
     if args.command in ("run-once", "list-projects"):
-        _save_ci_artifacts(out_dir, message, None)
+        _save_ci_artifacts(out_dir, message)
     elif not (out_dir / "ci_message.txt").is_file():
-        _save_ci_artifacts(out_dir, message, None)
+        _save_ci_artifacts(out_dir, message)
 
 
 if __name__ == "__main__":
