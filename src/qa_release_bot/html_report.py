@@ -282,6 +282,7 @@ h1, h2, h3, .font-display { font-family: 'Unbounded', sans-serif; font-weight: 7
 .sev-amber { background: rgba(245,166,35,0.15); color: var(--amber); }
 .sev-purple { background: rgba(167,139,250,0.15); color: var(--purple); }
 .sev-green { background: rgba(62,207,142,0.15); color: var(--green); }
+.sev-muted { background: rgba(123,127,145,0.15); color: var(--muted); }
 .issue-id { font-size: 12px; color: var(--muted); }
 .dyn-badge {
   margin-left: auto;
