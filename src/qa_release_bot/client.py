@@ -124,7 +124,7 @@ class GlitchtipClient:
         self,
         project: GlitchtipProjectRef,
         *,
-        query: str = "",
+        query: str | None = None,
         stats_period: str = "90d",
         page_limit: int = 100,
         max_issues: int = 2500,
@@ -175,17 +175,18 @@ class GlitchtipClient:
         self,
         project: GlitchtipProjectRef,
         *,
-        query: str,
+        query: str | None,
         stats_period: str,
         limit: int,
         cursor: str | None,
     ) -> tuple[list[GlitchtipIssue], str | None]:
         path = f"/api/0/projects/{project.org_slug}/{project.slug}/issues/"
         params: dict[str, Any] = {
-            "query": query,
             "statsPeriod": stats_period,
             "limit": limit,
         }
+        if query is not None:
+            params["query"] = query
         if cursor:
             params["cursor"] = cursor
         response = self._get(path, **params)

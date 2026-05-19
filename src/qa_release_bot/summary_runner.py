@@ -18,9 +18,10 @@ from qa_release_bot.config import (
     report_output_dir,
     snapshots_dir,
 )
-from qa_release_bot.new_issues import find_new_issues_first_seen_today
+from qa_release_bot.new_issues import NewIssueItem, find_new_issues_first_seen_today
 from qa_release_bot.noise_groups import group_noise_issues
 from qa_release_bot.release_decision import decide_summary, split_by_severity
+from qa_release_bot.issue_record import IssueRecord
 from qa_release_bot.severity_rules import IssueSeverity
 from qa_release_bot.snapshot_store import SnapshotStore
 from qa_release_bot.html_report import (
@@ -31,6 +32,42 @@ from qa_release_bot.html_report import (
 from qa_release_bot.summary_report import SummaryReport, render_summary_markdown
 
 log = structlog.get_logger(__name__)
+
+
+def _merge_issue_records(
+    primary: list[IssueRecord], secondary: list[IssueRecord]
+) -> list[IssueRecord]:
+    by_id: dict[str, IssueRecord] = {str(i.id): i for i in primary}
+    for issue in secondary:
+        key = str(issue.id)
+        prev = by_id.get(key)
+        if prev is None:
+            by_id[key] = issue
+            continue
+        if len(issue.stack_frames) > len(prev.stack_frames):
+            by_id[key] = issue
+        elif issue.count > prev.count:
+            by_id[key] = issue
+    return list(by_id.values())
+
+
+def _enrich_new_issue_items(
+    items: list[NewIssueItem], enriched_pool: list[IssueRecord]
+) -> list[NewIssueItem]:
+    by_id = {str(i.id): i for i in enriched_pool}
+    out: list[NewIssueItem] = []
+    for item in items:
+        issue = by_id.get(str(item.issue.id), item.issue)
+        out.append(
+            NewIssueItem(
+                issue=issue,
+                environment=item.environment,
+                severity=item.severity,
+                tracker_title=item.tracker_title,
+                deploy_hint=item.deploy_hint,
+            )
+        )
+    return out
 
 
 class SingleProjectSummaryRunner:
@@ -87,8 +124,11 @@ class SingleProjectSummaryRunner:
                 project, query=query, stats_period=stats_period
             )
             log.info("fetching_all_for_new_today", project=project.slug)
-            all_for_new = client.fetch_all_issue_records(
-                project, query="", stats_period="90d"
+            all_for_new = _merge_issue_records(
+                client.fetch_all_issue_records(project, query=None, stats_period="90d"),
+                client.fetch_all_issue_records(
+                    project, query=query, stats_period=stats_period
+                ),
             )
 
         current_ids = {i.id for i in raw}
@@ -107,6 +147,8 @@ class SingleProjectSummaryRunner:
             glitchtip_org_slug=self._settings.glitchtip_org_slug,
             glitchtip_project_id=summary_project_id,
         )
+        new_items = _enrich_new_issue_items(new_items, raw)
+        log.info("new_issues_today", count=len(new_items), project=project.slug)
         self._snapshots.save(snap_env, raw)
 
         deduped, noise_groups = group_noise_issues(raw)

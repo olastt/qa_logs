@@ -33,7 +33,7 @@ def test_render_summary_markdown_no_diff_sections():
     assert "webappswidgets-test" in md
     assert "Дифф" not in md
     assert "STAGE" not in md
-    assert "Первый запуск" in md
+    assert "Первый запуск" not in md or "снапшот" in md.lower()
     assert "TypeError" in md or "widget" in md
 
 

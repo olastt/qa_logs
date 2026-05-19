@@ -903,12 +903,16 @@ def _verdict(ctx: HtmlPageContext) -> str:
 
 
 def _new_issues_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
+    if ctx.is_summary:
+        return _new_issues_section_summary(ctx, reg)
     if ctx.is_first_run:
         body = (
             '<p class="stub-card">📌 <strong>Первый запуск.</strong> Снапшот сохранён. '
             "Новые логи появятся в следующем отчёте.</p>"
         )
-    elif not ctx.new_issues:
+        section_title = "🆕 Новые логи"
+        return f'<section class="section"><h2 class="section-title">{section_title}</h2>{body}</section>'
+    if not ctx.new_issues:
         empty = (
             "✅ <strong>Новых логов за сегодня нет</strong>."
             if ctx.is_summary
@@ -965,8 +969,35 @@ def _new_issues_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
         rest = len(ctx.new_issues) - min(25, len(ctx.new_issues))
         more = f'<p class="new-meta">… ещё {rest}</p>' if rest > 0 else ""
         body = f'{note}<div class="new-section">{"".join(cards)}{more}</div>'
-    section_title = "🆕 Новые логи за сегодня" if ctx.is_summary else "🆕 Новые логи"
+    section_title = "🆕 Новые логи"
     return f'<section class="section"><h2 class="section-title">{section_title}</h2>{body}</section>'
+
+
+def _new_issues_section_summary(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
+    note = (
+        '<p class="stub-card" style="margin-bottom:12px">'
+        "Логи с <strong>first_seen</strong> за сегодня (МСК) по всем issue проекта."
+    )
+    if ctx.is_first_run:
+        note += " Снапшот для динамики сохранён."
+    note += "</p>"
+
+    if not ctx.new_issues:
+        body = f'{note}<p class="stub-card">✅ <strong>Новых логов за сегодня нет</strong>.</p>'
+    else:
+        max_count = max((i.issue.count for i in ctx.new_issues), default=1)
+        cards = "".join(
+            _issue_card_html(item.issue, item.severity, max_count, ctx, reg)
+            for item in ctx.new_issues[:25]
+        )
+        rest = len(ctx.new_issues) - min(25, len(ctx.new_issues))
+        more = f'<p class="stub-card">… ещё {rest}</p>' if rest > 0 else ""
+        body = f"{note}{cards}{more}"
+    return (
+        '<section class="section">'
+        '<h2 class="section-title">🆕 Новые логи за сегодня</h2>'
+        f"{body}</section>"
+    )
 
 
 def _charts_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
