@@ -13,7 +13,7 @@ on:
           - "🚦 Проверить релиз"
           - "📊 Сводка — что нового"
       project:
-        description: "Проект"
+        description: "Релиз → vetmanager-extjs | Сводка → webapps-widgets, vetmanager-laravel"
         required: true
         type: choice
         options:
@@ -81,6 +81,16 @@ jobs:
           echo "all=$ALL_PROJECTS" >> $GITHUB_OUTPUT
           echo "notify=$NOTIFY" >> $GITHUB_OUTPUT
           echo "needs_surge=true" >> $GITHUB_OUTPUT
+
+      - name: Validate action and project
+        if: steps.params.outputs.all != 'true'
+        env:
+          PYTHONPATH: src
+        run: |
+          python -c "
+          from qa_release_bot.projects import validate_command_project
+          validate_command_project('${{ steps.params.outputs.command }}', '${{ steps.params.outputs.project }}')
+          "
 
       - name: Run qa-bot
         id: run

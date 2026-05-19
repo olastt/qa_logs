@@ -8,8 +8,17 @@ from qa_release_bot.notify_format import (
     format_summary_notify,
     release_verdict_short,
 )
-from qa_release_bot.projects import surge_domain
+import pytest
+
+from qa_release_bot.projects import surge_domain, validate_command_project
 from qa_release_bot.release_decision import ReleaseDecision
+
+
+def test_validate_command_project_mismatch():
+    with pytest.raises(ValueError, match="Проверить релиз"):
+        validate_command_project("summary", "vetmanager-extjs")
+    with pytest.raises(ValueError, match="Сводка"):
+        validate_command_project("release", "webapps-widgets")
 
 
 def test_surge_domain():

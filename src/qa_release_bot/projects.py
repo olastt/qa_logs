@@ -63,6 +63,32 @@ def get_cli_project(project_id: str) -> CliProject:
     raise ValueError(f"Неизвестный проект «{project_id}». Доступны: {known}")
 
 
+def project_ids_for_command(command: str) -> list[str]:
+    return [p.id for p in list_cli_projects() if p.kind == command]
+
+
+def validate_command_project(command: str, project_id: str) -> None:
+    """Проверка пары команда + проект (release/summary)."""
+    project = get_cli_project(project_id)
+    if project.kind == command:
+        return
+
+    release_ids = ", ".join(project_ids_for_command("release")) or "—"
+    summary_ids = ", ".join(project_ids_for_command("summary")) or "—"
+
+    if command == "summary":
+        raise ValueError(
+            f"«{project_id}» — это проверка релиза (test + stage), не сводка.\n"
+            f"Для сводки выберите проект: {summary_ids}\n"
+            f"Для {project_id} в Actions выберите: 🚦 Проверить релиз"
+        )
+    raise ValueError(
+        f"«{project_id}» — только сводка по одной среде, без test/stage.\n"
+        f"Для релиза выберите проект: {release_ids}\n"
+        f"Для {project_id} в Actions выберите: 📊 Сводка — что нового"
+    )
+
+
 def all_cli_project_ids() -> list[str]:
     return [p.id for p in list_cli_projects()]
 

@@ -13,7 +13,11 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from qa_release_bot.config import Settings, load_report_config, report_output_dir  # noqa: E402
 from qa_release_bot.notify_format import format_failure_notify  # noqa: E402
-from qa_release_bot.projects import ALL_PROJECTS_LABEL, list_cli_projects  # noqa: E402
+from qa_release_bot.projects import (  # noqa: E402
+    ALL_PROJECTS_LABEL,
+    list_cli_projects,
+    validate_command_project,
+)
 from qa_release_bot.run_facade import (  # noqa: E402
     append_ci_message,
     notify_with_url,
@@ -60,8 +64,11 @@ def main() -> None:
 
     if args.project.strip().upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
         project_ids = _projects_for_command(args.command)
+        if not project_ids:
+            raise ValueError(f"Нет проектов для команды «{args.command}»")
     else:
         project_ids = [args.project.strip()]
+        validate_command_project(args.command, project_ids[0])
 
     messages: list[str] = []
     failed = False
