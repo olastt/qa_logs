@@ -128,9 +128,39 @@ def main() -> None:
     settings = Settings()
 
     if args.command == "projects":
-        for p in list_cli_projects():
-            kind = "релиз" if p.kind == "release" else "сводка"
-            print(f"{p.id}  ({kind})")
+        from qa_release_bot.config import _cli_alias_maps, load_report_config
+
+        cfg = load_report_config()
+        summary_aliases, release_aliases = _cli_alias_maps(cfg)
+
+        def _instance(p) -> str:
+            key = p.comparison_name or p.summary_config_name or p.id
+            if key.startswith("selectel-"):
+                return "selectel"
+            if key.startswith("hetzner-"):
+                return "hetzner"
+            return "—"
+
+        for inst in ("selectel", "hetzner"):
+            print(f"\n[{inst.upper()}]")
+            for kind, label in (("release", "Релиз (test ↔ stage/production)"), ("summary", "Сводка")):
+                items = [p for p in list_cli_projects() if p.kind == kind and _instance(p) == inst]
+                if not items:
+                    continue
+                print(f"  {label}:")
+                for p in sorted(items, key=lambda x: x.id):
+                    print(f"    {p.id}")
+        other_release = [p for p in list_cli_projects() if p.kind == "release" and _instance(p) == "—"]
+        if other_release:
+            print("\n[РЕЛИЗ]")
+            for p in other_release:
+                print(f"  {p.id}")
+        if summary_aliases or release_aliases:
+            print("\n[алиасы]")
+            for short, full in sorted(release_aliases.items()):
+                print(f"  {short} → {full}")
+            for short, full in sorted(summary_aliases.items()):
+                print(f"  {short} → {full}")
         return
 
     if args.command in ("release", "summary"):

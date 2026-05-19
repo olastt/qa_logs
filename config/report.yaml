@@ -1,13 +1,33 @@
-# Пары окружений test ↔ stage для сравнительного QA-отчёта
+# Релиз: сравнение test ↔ stage (или test ↔ production, если stage нет в Glitchtip)
 
 comparisons:
-  - name: vetmanager-extjs
+  - name: hetzner-vetmanager-extjs
     instance: hetzner
     test_slug: vetmanager-extjs-test
     stage_slug: vetmanager-extjs-stage
+  - name: hetzner-mobilebackend
+    instance: hetzner
+    test_slug: mobilebackend-test
+    stage_slug: mobilebackend-production
+  - name: hetzner-flutter-doctor-app
+    instance: hetzner
+    test_slug: flutter-doctor-app-test
+    stage_slug: flutter-doctor-app-production
+  - name: hetzner-vetmanager-link
+    instance: hetzner
+    test_slug: vetmanager-link-test
+    stage_slug: vetmanager-link-production
+  - name: hetzner-webapps-widgets
+    instance: hetzner
+    test_slug: webappswidgets-test
+    stage_slug: webappswidgets-production
+  - name: selectel-webapps-widgets
+    instance: selectel
+    test_slug: webappswidgets-test
+    stage_slug: webappswidgets-production
 
 # Сводка по одному проекту: qa-bot summary {id}
-# id = {instance}-{slug} или короткий алиас из cli_aliases
+# id = {instance}-{slug}  →  qa-bot projects
 
 summary_watchlist:
   selectel:
@@ -29,18 +49,17 @@ summary_watchlist:
     - webappswidgets-production
     - webappswidgets-test
 
-# Короткие имена CLI → selectel-… / hetzner-…
 cli_aliases:
-  webapps-widgets: selectel-webappswidgets-test
+  summary:
+    webapps-widgets: selectel-webappswidgets-test
+  release:
+    vetmanager-extjs: hetzner-vetmanager-extjs
 
-# Доп. записи (если нужны вне watchlist)
 summaries: []
 
-# stats_period передаётся в API Glitchtip (24h, 14d, …)
 stats_period: 14d
 issue_query: is:unresolved
 
-# Лимиты строк в отчёте (остальное — «… ещё N»)
 report_limits:
   max_critical: 20
   max_new_in_stage: 20
@@ -50,16 +69,9 @@ report_limits:
   max_noise: 10
   title_max_len: 90
 
-# Куда сохранять .txt и .pdf при `qa-release-bot report --legacy` (без -o)
 output_dir: reports
-
-# Снапшоты issues: snapshots/YYYY-MM-DD_{test|stage}.json
 snapshots_dir: snapshots
 
-# Для регрессий: first_seen на stage позже этой даты (опционально)
-# last_deploy_date: 2026-05-12
-
-# API Glitchtip (429 Too Many Requests)
 api:
   max_retries: 8
   retry_base_sec: 3

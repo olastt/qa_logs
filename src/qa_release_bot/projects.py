@@ -7,6 +7,8 @@ from typing import Any
 
 from qa_release_bot.config import (
     Settings,
+    _cli_alias_maps,
+    _resolve_release_comparison_name,
     _resolve_summary_config_name,
     build_summary_refs,
     load_report_config,
@@ -20,6 +22,7 @@ class CliProject:
     id: str
     kind: str  # release | summary
     summary_config_name: str | None = None
+    comparison_name: str | None = None
     title: str = ""
 
 
@@ -27,12 +30,19 @@ def list_cli_projects() -> list[CliProject]:
     cfg = load_report_config()
     by_id: dict[str, CliProject] = {}
 
+    _, release_aliases = _cli_alias_maps(cfg)
+    alias_by_comparison = {v: k for k, v in release_aliases.items()}
+
     for item in cfg.get("comparisons", []):
-        pid = item["name"]
+        comparison = item["name"]
+        pid = alias_by_comparison.get(comparison, comparison)
+        test_slug = item["test_slug"]
+        stage_slug = item["stage_slug"]
         by_id[pid] = CliProject(
             id=pid,
             kind="release",
-            title=f"Релиз {pid} (test + stage)",
+            comparison_name=comparison,
+            title=f"Релиз {comparison} ({test_slug} ↔ {stage_slug})",
         )
 
     settings = Settings()
@@ -64,9 +74,14 @@ def list_cli_projects() -> list[CliProject]:
 
 def get_cli_project(project_id: str) -> CliProject:
     cfg = load_report_config()
-    config_name = _resolve_summary_config_name(project_id, cfg)
+    summary_name = _resolve_summary_config_name(project_id, cfg)
+    comparison_name = _resolve_release_comparison_name(project_id, cfg)
     for p in list_cli_projects():
-        if p.id == project_id or p.summary_config_name == config_name:
+        if p.id == project_id:
+            return p
+        if p.kind == "summary" and p.summary_config_name == summary_name:
+            return p
+        if p.kind == "release" and p.comparison_name == comparison_name:
             return p
     known = ", ".join(p.id for p in list_cli_projects())
     raise ValueError(f"Неизвестный проект «{project_id}». Доступны: {known}")
@@ -122,13 +137,5 @@ def surge_domain(project_id: str, command: str) -> str:
 
 
 def _summary_cli_id(config_name: str, cfg: dict[str, Any]) -> str:
-    aliases: dict[str, str] = dict(cfg.get("cli_aliases") or {})
-    for pid, target in aliases.items():
-        if target == config_name:
-            return pid
-    # selectel-*/hetzner-* — полный id, иначе test/stage/production путаются
-    if config_name.startswith(("selectel-", "hetzner-")):
-        return config_name
-    if config_name.endswith("-test"):
-        return config_name[: -len("-test")]
+    """В списке проектов всегда полный id (selectel-… / hetzner-…)."""
     return config_name

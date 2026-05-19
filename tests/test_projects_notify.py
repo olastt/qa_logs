@@ -11,7 +11,7 @@ from qa_release_bot.notify_format import (
 )
 import pytest
 
-from qa_release_bot.projects import surge_domain, validate_command_project
+from qa_release_bot.projects import list_cli_projects, project_ids_for_command, surge_domain, validate_command_project
 from qa_release_bot.release_decision import ReleaseDecision
 
 
@@ -36,6 +36,18 @@ def test_summary_watchlist_count():
 
     refs = build_summary_refs(Settings(), load_report_config())
     assert len(refs) == 16
+
+
+def test_release_comparisons_count():
+    assert len(project_ids_for_command("release")) == 6
+
+
+def test_list_cli_projects_total():
+    projects = list_cli_projects()
+    assert len(projects) == 22
+    assert "vetmanager-extjs" in project_ids_for_command("release")
+    assert "selectel-webappswidgets-test" in project_ids_for_command("summary")
+    assert "hetzner-vetmanager-extjs-test" in project_ids_for_command("summary")
 
 
 def test_validate_command_project_mismatch():

@@ -99,10 +99,28 @@ def instance_credentials(settings: Settings, instance: str) -> tuple[str, str]:
     raise ValueError(f"Unknown instance: {instance}")
 
 
+def _cli_alias_maps(raw: dict[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
+    """(summary_aliases, release_aliases)."""
+    aliases = raw.get("cli_aliases") or {}
+    if isinstance(aliases.get("summary"), dict) or isinstance(aliases.get("release"), dict):
+        summary = dict(aliases.get("summary") or {})
+        release = dict(aliases.get("release") or {})
+        return summary, release
+    # legacy: одна плоская map → только summary
+    flat = {k: v for k, v in aliases.items() if isinstance(v, str)}
+    return flat, {}
+
+
 def _resolve_summary_config_name(name: str, raw: dict[str, Any]) -> str:
-    """CLI id → имя сводки в config (только прямое сопоставление)."""
-    aliases: dict[str, str] = dict(raw.get("cli_aliases") or {})
-    return aliases.get(name, name)
+    """CLI id → имя сводки в config."""
+    summary_aliases, _ = _cli_alias_maps(raw)
+    return summary_aliases.get(name, name)
+
+
+def _resolve_release_comparison_name(name: str, raw: dict[str, Any]) -> str:
+    """CLI id → name в comparisons."""
+    _, release_aliases = _cli_alias_maps(raw)
+    return release_aliases.get(name, name)
 
 
 def load_report_config(path: Path | None = None) -> dict[str, Any]:

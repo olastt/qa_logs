@@ -42,8 +42,9 @@ def run_release(
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
     md_path = out_dir / f"release-{project_id}-{stamp}.md"
 
+    comparison = project.comparison_name or project_id
     report = QAAnalystRunner(settings).run(
-        project_name=project_id,
+        project_name=comparison,
         save_markdown=md_path,
         save_html=save_html,
         save_pdf=False,

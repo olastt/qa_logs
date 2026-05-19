@@ -13,17 +13,38 @@ on:
           - "🚦 Проверить релиз"
           - "📊 Сводка — что нового"
       project:
-        description: "Релиз → vetmanager-extjs | Сводка → webapps-widgets или selectel-/hetzner-{slug} | qa-bot projects"
+        description: "Проект (полный список — шаг «Список проектов»)"
         required: true
         type: choice
+        default: "ВСЕ ПРОЕКТЫ"
         options:
-          - vetmanager-extjs
-          - webapps-widgets
-          - selectel-webappswidgets-test
-          - selectel-vetmanager-extjs-production
-          - hetzner-vetmanager-extjs-test
-          - hetzner-vetmanager-extjs-stage
           - ВСЕ ПРОЕКТЫ
+          # Релиз test ↔ stage/production
+          - vetmanager-extjs
+          - hetzner-mobilebackend
+          - hetzner-flutter-doctor-app
+          - hetzner-vetmanager-link
+          - hetzner-webapps-widgets
+          - selectel-webapps-widgets
+          # Сводка Selectel
+          - selectel-vetmanager-extjs-production
+          - selectel-flutter-doctor-app-production
+          - selectel-webappswidgets-production
+          - selectel-webappswidgets-test
+          - webapps-widgets
+          # Сводка Hetzner
+          - hetzner-flutter-doctor-app-production
+          - hetzner-flutter-doctor-app-test
+          - hetzner-mobilebackend-production
+          - hetzner-mobilebackend-test
+          - hetzner-vetmanager-extjs-production
+          - hetzner-vetmanager-extjs-review
+          - hetzner-vetmanager-extjs-stage
+          - hetzner-vetmanager-extjs-test
+          - hetzner-vetmanager-link-production
+          - hetzner-vetmanager-link-test
+          - hetzner-webappswidgets-production
+          - hetzner-webappswidgets-test
       notify_bitrix:
         description: "Отправить в Bitrix24"
         required: true
@@ -53,6 +74,17 @@ jobs:
 
       - name: Install dependencies
         run: pip install -e ".[dev]"
+
+      - name: List projects
+        env:
+          PYTHONPATH: src
+        run: |
+          echo "## Проекты QA Bot" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          qa-bot projects | tee projects.txt
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "В поле **project** укажите id из списка или \`ВСЕ ПРОЕКТЫ\`." >> $GITHUB_STEP_SUMMARY
 
       - name: Resolve command
         id: params
