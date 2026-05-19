@@ -17,13 +17,31 @@ from qa_release_bot.release_decision import ReleaseDecision
 
 def test_build_summary_ref_cli_alias():
     ref = build_summary_ref(Settings(), load_report_config(), name="webapps-widgets")
-    assert ref["name"] == "webapps-widgets-test"
+    assert ref["name"] == "selectel-webappswidgets-test"
+    assert ref["instance"] == "selectel"
+    assert ref["project"].slug == "webappswidgets-test"
+
+
+def test_build_summary_ref_config_name_unchanged():
+    ref = build_summary_ref(
+        Settings(),
+        load_report_config(),
+        name="selectel-webappswidgets-test",
+    )
+    assert ref["name"] == "selectel-webappswidgets-test"
+
+
+def test_summary_watchlist_count():
+    from qa_release_bot.config import build_summary_refs
+
+    refs = build_summary_refs(Settings(), load_report_config())
+    assert len(refs) == 16
 
 
 def test_validate_command_project_mismatch():
     with pytest.raises(ValueError, match="Проверить релиз"):
         validate_command_project("summary", "vetmanager-extjs")
-    with pytest.raises(ValueError, match="Сводка"):
+    with pytest.raises(ValueError, match="Проверить релиз|только сводка"):
         validate_command_project("release", "webapps-widgets")
 
 

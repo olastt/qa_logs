@@ -11,9 +11,11 @@ pip install -e ".[dev]"
 copy .env.example .env
 # заполните GLITCHTIP_*_TOKEN в .env
 
-qa-bot projects                    # список проектов
+qa-bot projects                    # все проекты (16 сводок + 1 релиз)
 qa-bot release vetmanager-extjs    # проверка релиза (test + stage)
-qa-bot summary webapps-widgets     # сводка: новые / исчезнувшие
+qa-bot summary webapps-widgets     # сводка Selectel widgets-test (алиас)
+qa-bot summary hetzner-vetmanager-extjs-stage
+qa-bot summary selectel-vetmanager-extjs-production
 qa-bot release vetmanager-extjs --no-stack --notify
 
 # алиас: qa-release-bot = qa-bot

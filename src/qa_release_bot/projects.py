@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from qa_release_bot.config import load_report_config
+from qa_release_bot.config import (
+    Settings,
+    _resolve_summary_config_name,
+    build_summary_refs,
+    load_report_config,
+)
 
 ALL_PROJECTS_LABEL = "ВСЕ ПРОЕКТЫ"
 
@@ -30,14 +35,16 @@ def list_cli_projects() -> list[CliProject]:
             title=f"Релиз {pid} (test + stage)",
         )
 
-    for item in cfg.get("summaries", []):
-        config_name = item["name"]
+    settings = Settings()
+    for ref in build_summary_refs(settings, cfg):
+        config_name = ref["name"]
+        label = ref["project"].label or ref["project"].slug
         pid = _summary_cli_id(config_name, cfg)
         by_id[pid] = CliProject(
             id=pid,
             kind="summary",
             summary_config_name=config_name,
-            title=f"Сводка {pid}",
+            title=f"Сводка {label} ({ref['instance']})",
         )
 
     for pid, meta in (cfg.get("cli_projects") or {}).items():
@@ -56,8 +63,10 @@ def list_cli_projects() -> list[CliProject]:
 
 
 def get_cli_project(project_id: str) -> CliProject:
+    cfg = load_report_config()
+    config_name = _resolve_summary_config_name(project_id, cfg)
     for p in list_cli_projects():
-        if p.id == project_id:
+        if p.id == project_id or p.summary_config_name == config_name:
             return p
     known = ", ".join(p.id for p in list_cli_projects())
     raise ValueError(f"Неизвестный проект «{project_id}». Доступны: {known}")
@@ -94,17 +103,32 @@ def all_cli_project_ids() -> list[str]:
 
 
 def surge_domain(project_id: str, command: str) -> str:
-    """qa-extjs-release.surge.sh ← vetmanager-extjs + release."""
-    slug = project_id.removeprefix("vetmanager-").removeprefix("webapps-")
+    """qa-extjs-release.surge.sh ← vetmanager-extjs / selectel-webappswidgets-test."""
+    slug = project_id
+    for prefix in ("selectel-", "hetzner-"):
+        if slug.startswith(prefix):
+            slug = slug[len(prefix) :]
+            break
+    slug = (
+        slug.removeprefix("vetmanager-")
+        .removeprefix("webappswidgets-")
+        .replace("webapps-widgets-", "widgets-")
+        .removeprefix("webapps-")
+    )
     slug = slug.strip("-") or "logs"
+    if len(slug) > 40:
+        slug = slug[:40].rstrip("-")
     return f"qa-{slug}-{command}.surge.sh"
 
 
 def _summary_cli_id(config_name: str, cfg: dict[str, Any]) -> str:
     aliases: dict[str, str] = dict(cfg.get("cli_aliases") or {})
-    for pid, name in aliases.items():
-        if name == config_name:
+    for pid, target in aliases.items():
+        if target == config_name:
             return pid
+    # selectel-*/hetzner-* — полный id, иначе test/stage/production путаются
+    if config_name.startswith(("selectel-", "hetzner-")):
+        return config_name
     if config_name.endswith("-test"):
         return config_name[: -len("-test")]
     return config_name

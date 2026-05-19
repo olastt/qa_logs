@@ -13,13 +13,16 @@ on:
           - "🚦 Проверить релиз"
           - "📊 Сводка — что нового"
       project:
-        description: "Релиз → vetmanager-extjs | Сводка → webapps-widgets, vetmanager-laravel"
+        description: "Релиз → vetmanager-extjs | Сводка → webapps-widgets или selectel-/hetzner-{slug} | qa-bot projects"
         required: true
         type: choice
         options:
           - vetmanager-extjs
           - webapps-widgets
-          - vetmanager-laravel
+          - selectel-webappswidgets-test
+          - selectel-vetmanager-extjs-production
+          - hetzner-vetmanager-extjs-test
+          - hetzner-vetmanager-extjs-stage
           - ВСЕ ПРОЕКТЫ
       notify_bitrix:
         description: "Отправить в Bitrix24"

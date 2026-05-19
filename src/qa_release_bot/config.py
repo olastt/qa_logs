@@ -100,13 +100,9 @@ def instance_credentials(settings: Settings, instance: str) -> tuple[str, str]:
 
 
 def _resolve_summary_config_name(name: str, raw: dict[str, Any]) -> str:
+    """CLI id → имя сводки в config (только прямое сопоставление)."""
     aliases: dict[str, str] = dict(raw.get("cli_aliases") or {})
-    if name in aliases:
-        return aliases[name]
-    for config_name, cli_id in aliases.items():
-        if cli_id == name:
-            return config_name
-    return name
+    return aliases.get(name, name)
 
 
 def load_report_config(path: Path | None = None) -> dict[str, Any]:
@@ -143,29 +139,86 @@ def build_comparison_refs(
     return refs
 
 
+def _summary_entry(
+    settings: Settings,
+    *,
+    name: str,
+    instance: str,
+    slug: str,
+    label: str | None = None,
+    snapshot_env: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "instance": instance,
+        "project": GlitchtipProjectRef(
+            instance=instance,
+            org_slug=settings.glitchtip_org_slug,
+            slug=slug,
+            label=label,
+        ),
+        "snapshot_env": snapshot_env or slug,
+    }
+
+
 def build_summary_refs(
     settings: Settings,
     report_config: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Одиночные проекты из config/report.yaml → summaries."""
+    """Сводки: summaries + summary_watchlist (slug из instances.yaml)."""
     raw = report_config or load_report_config()
     refs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(entry: dict[str, Any]) -> None:
+        if entry["name"] in seen:
+            return
+        seen.add(entry["name"])
+        refs.append(entry)
+
     for item in raw.get("summaries", []):
         instance = item["instance"]
         slug = item["project_slug"]
-        refs.append(
-            {
-                "name": item["name"],
-                "instance": instance,
-                "project": GlitchtipProjectRef(
-                    instance=instance,
-                    org_slug=settings.glitchtip_org_slug,
-                    slug=slug,
-                    label=item.get("label"),
-                ),
-                "snapshot_env": item.get("snapshot_env") or slug,
-            }
+        add(
+            _summary_entry(
+                settings,
+                name=item["name"],
+                instance=instance,
+                slug=slug,
+                label=item.get("label"),
+                snapshot_env=item.get("snapshot_env"),
+            )
         )
+
+    watchlist: dict[str, list[Any]] = raw.get("summary_watchlist") or {}
+    if watchlist:
+        instances_cfg = load_instances_config().get("instances", {})
+        for instance, slugs in watchlist.items():
+            projects_by_slug = {
+                p["slug"]: p
+                for p in instances_cfg.get(instance, {}).get("projects", [])
+            }
+            for item in slugs:
+                if isinstance(item, dict):
+                    slug = item["slug"]
+                    label = item.get("label")
+                else:
+                    slug = str(item)
+                    label = projects_by_slug.get(slug, {}).get("label")
+                if slug not in projects_by_slug and label is None:
+                    label = None
+                name = f"{instance}-{slug}"
+                add(
+                    _summary_entry(
+                        settings,
+                        name=name,
+                        instance=instance,
+                        slug=slug,
+                        label=label,
+                        snapshot_env=name,
+                    )
+                )
+
     return refs
 
 
