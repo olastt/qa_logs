@@ -20,7 +20,7 @@ from qa_release_bot.config import (
 )
 from qa_release_bot.new_issues import find_new_issues_by_id
 from qa_release_bot.noise_groups import group_noise_issues
-from qa_release_bot.release_decision import decide_release, split_by_severity
+from qa_release_bot.release_decision import decide_summary, split_by_severity
 from qa_release_bot.severity_rules import IssueSeverity
 from qa_release_bot.snapshot_store import SnapshotStore
 from qa_release_bot.html_report import (
@@ -97,7 +97,7 @@ class SingleProjectSummaryRunner:
 
         deduped, noise_groups = group_noise_issues(raw)
         by_sev = split_by_severity(deduped)
-        decision = decide_release(
+        decision = decide_summary(
             by_sev[IssueSeverity.BLOCKER],
             by_sev[IssueSeverity.HIGH],
         )

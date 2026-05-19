@@ -139,15 +139,15 @@ def collect_unmapped_controllers(
 def _suggest_map_description(controller: str) -> str:
     area = controller.replace("Controller", "")
     if area.startswith("Frame"):
-        return "[описание модуля ExtJS / Frame]"
+        return "раздел ExtJS (Frame)"
     if "Admission" in area:
-        return "[модуль приёмов]"
+        return "модуль приёмов"
     if "Client" in area:
-        return "[модуль клиентов]"
+        return "модуль клиентов"
     if "Widget" in area:
-        return "[виджеты]"
+        return "виджеты"
     if "Dashly" in area:
-        return "[интеграция Dashly]"
+        return "интеграция Dashly"
     if "Reviews" in area:
-        return "[отзывы]"
-    return "[описание модуля]"
+        return "отзывы"
+    return "добавить в module_map.yaml"

@@ -16,6 +16,24 @@ class ReleaseDecision:
     items: list[str]
 
 
+def decide_summary(
+    blockers: list[IssueRecord],
+    highs: list[IssueRecord],
+) -> ReleaseDecision:
+    """Сводка по одной среде — без вердикта «релиз запрещён/разрешён»."""
+    items = [
+        f"🔴 Blocker: {len(blockers)} · 🟠 High: {len(highs)} · "
+        f"см. карточки и таблицу ниже",
+    ]
+    if not blockers and not highs:
+        items.append("Критичных blocker/high в выборке нет.")
+    return ReleaseDecision(
+        verdict="ok",
+        headline="📋 **Сводка по логам**",
+        items=items,
+    )
+
+
 def decide_release(
     blockers: list[IssueRecord],
     highs: list[IssueRecord],

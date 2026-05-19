@@ -203,9 +203,17 @@ h1, h2, h3, .font-display { font-family: 'Unbounded', sans-serif; font-weight: 7
 .new-meta { font-size: 12px; color: var(--muted); }
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
+.issue-title-link {
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(91,106,240,0.45);
+  font-weight: 500;
+}
+.issue-title-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.ml-title a.issue-title-link { color: inherit; }
 @media (max-width: 960px) {
   .charts-grid { grid-template-columns: 1fr; }
 }
@@ -454,6 +462,7 @@ class HtmlPageContext:
     shared_count: int = 0
     total_api: int | None = None
     show_diff: bool = True
+    is_summary: bool = False
     glitchtip_base_url: str = ""
 
 
@@ -513,9 +522,6 @@ def build_summary_html_context(
     *,
     glitchtip_base_url: str = "",
 ) -> HtmlPageContext:
-    labels, values = [], []
-    if store:
-        labels, values = _weekly_totals(store, report.project_slug)
     return HtmlPageContext(
         page_title="Сводка логов",
         product_name=report.product_name,
@@ -534,11 +540,10 @@ def build_summary_html_context(
         new_issues=report.new_issues,
         is_first_run=report.is_first_run,
         noise_groups=report.noise_groups,
-        trend_labels=labels,
-        trend_values=values,
         env_label="test",
         total_api=report.total_unresolved,
         show_diff=False,
+        is_summary=True,
         glitchtip_base_url=glitchtip_base_url.rstrip("/"),
     )
 
@@ -732,6 +737,15 @@ def _glitchtip_link_html(url: str, *, compact: bool = False) -> str:
     )
 
 
+def _title_link_html(title: str, url: str) -> str:
+    if url:
+        return (
+            f'<a href="{_esc(url)}" target="_blank" class="issue-title-link" '
+            f'title="Открыть issue в Glitchtip">{_esc(title)}</a>'
+        )
+    return _esc(title)
+
+
 def _risk_badge_html(risk_css: str, label: str) -> str:
     return f'<span class="risk-badge {risk_css}">{_esc(label)}</span>'
 
@@ -795,7 +809,7 @@ def render_html(
         '<div class="wrap">',
         _header(ctx, fetched),
         _metrics(ctx, total_product),
-        _verdict(ctx),
+        _verdict(ctx) if not ctx.is_summary else _summary_intro(ctx),
         _new_issues_section(ctx, reg),
         _charts_section(ctx, reg),
         _blockers_high_section(ctx, max_count, reg),
@@ -851,6 +865,19 @@ def _metrics(ctx: HtmlPageContext, total: int) -> str:
     return f'<section class="metrics">{"".join(cards)}</section>'
 
 
+def _summary_intro(ctx: HtmlPageContext) -> str:
+    headline = _strip_md(ctx.decision.headline)
+    items = "".join(
+        f"<li>{_esc(_strip_md(item))}</li>" for item in ctx.decision.items[:8]
+    )
+    list_html = f'<ul class="verdict-items">{items}</ul>' if items else ""
+    return f"""<section class="section">
+  <div class="verdict-banner verdict-ok">{_esc(headline)}
+  {list_html}
+  </div>
+</section>"""
+
+
 def _verdict(ctx: HtmlPageContext) -> str:
     css_cls, title = _VERDICT.get(ctx.decision.verdict, _VERDICT["ok"])
     items = "".join(
@@ -860,7 +887,8 @@ def _verdict(ctx: HtmlPageContext) -> str:
     return f"""<section class="section">
   <div class="verdict-banner {css_cls}">{_esc(title)}
   {list_html}
-</section>""".replace("", "")
+  </div>
+</section>"""
 
 
 def _new_issues_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
@@ -894,13 +922,6 @@ def _new_issues_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
 
 
 def _charts_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
-    has_trends = bool(ctx.trend_labels and ctx.trend_values)
-    trend_inner = (
-        '<div class="chart-wrap"><canvas id="chartTrends"></canvas></div>'
-        if has_trends
-        else '<p class="stub-card" style="margin:0;border:none;background:transparent;padding:20px 0">'
-        "📌 Тренды появятся после нескольких запусков</p>"
-    )
     return f"""<section class="section">
   <h2 class="section-title">📊 Графики</h2>
   <div class="charts-grid">
@@ -909,12 +930,8 @@ def _charts_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
       <div class="chart-wrap"><canvas id="chartSeverity"></canvas></div>
     </div>
     <div class="chart-card">
-      <h3>Топ-10 по count</h3>
+      <h3>Топ-10 по кол-ву</h3>
       <div class="chart-wrap"><canvas id="chartTop10"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <h3>Динамика</h3>
-      {trend_inner}
     </div>
   </div>
 </section>"""
@@ -964,7 +981,7 @@ def _issue_card_html(
     <span class="issue-id">id={_esc(issue.id)}</span>
     <span class="dyn-badge {dyn_cls}">{_esc(dyn_lbl)}</span>
   </div>
-  <p class="issue-tracker">{_esc(analysis.tracker_title)}</p>
+  <p class="issue-tracker">{_title_link_html(analysis.tracker_title, analysis.glitchtip_url)}</p>
   <div class="issue-body">
     <p class="issue-block"><strong>🔍 Что случилось:</strong> {_esc(analysis.what_happened)}</p>
     {module_line}
@@ -1018,7 +1035,7 @@ def _ml_table_row(
     return (
         f"<tr>"
         f'<td><span class="sev-badge sev-{tone}">{_esc(label)}</span></td>'
-        f'<td class="ml-title">{_esc(title)}</td>'
+        f'<td class="ml-title">{_title_link_html(title, analysis.glitchtip_url)}</td>'
         f"<td>{_risk_badge_html(analysis.risk_css, analysis.risk_label)}</td>"
         f"<td>{issue.count}</td>"
         f"<td>{_esc(fmt_date_ru(issue.first_seen))}</td>"
@@ -1064,7 +1081,7 @@ def _medium_low_section(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
 
     table = f"""<table class="ml-table">
   <thead><tr>
-    <th>Уровень</th><th>Название</th><th>Риск</th><th>Count</th>
+    <th>Уровень</th><th>Название</th><th>Риск</th><th>Кол-во</th>
     <th>Впервые</th><th>Последний</th><th>Дней</th><th>Env</th><th></th>
   </tr></thead>
   <tbody>{"".join(body_rows)}</tbody>
@@ -1082,21 +1099,18 @@ def _module_map_section(ctx: HtmlPageContext) -> str:
     if not unmapped:
         return ""
     lines = "".join(
-        f'<p class="module-map-line"><code>{_esc(ctrl)}</code>    → {_esc(desc)}</p>'
+        f'<p class="module-map-line"><code>{_esc(ctrl)}</code> — {_esc(desc)}</p>'
         for ctrl, desc in unmapped
     )
     return f"""<section class="module-map-block">
-  <h2>━━━ 🗺️ Обновить карту модулей ━━━</h2>
-  <p>Встречены новые контроллеры — добавь в промпт:</p>
+  <h2>🗺️ Неизвестные модули (ExtJS)</h2>
+  <p>Контроллеры в стеке, которых ещё нет в <code>config/module_map.yaml</code>. После добавления в отчёте появятся понятные названия разделов.</p>
   {lines}
 </section>"""
 
 def _diff_section(ctx: HtmlPageContext) -> str:
     if not ctx.show_diff:
-        return """<section class="section">
-  <h2 class="section-title">📊 Дифф</h2>
-  <p class="stub-card">Сводка по одному окружению — дифф test↔stage не применим.</p>
-</section>"""
+        return ""
     if ctx.is_first_run or not ctx.diff_available or not ctx.is_tuesday_diff:
         return """<section class="section">
   <h2 class="section-title">📊 Дифф с прошлым вторником</h2>
@@ -1134,10 +1148,7 @@ def _diff_section(ctx: HtmlPageContext) -> str:
 
 def _noise_section(ctx: HtmlPageContext) -> str:
     if not ctx.noise_groups:
-        return """<section class="section">
-  <h2 class="section-title">🗑️ Шум</h2>
-  <p class="stub-card">Шум не выделен — file_put_contents и clickhouse не доминируют.</p>
-</section>"""
+        return ""
     items = "".join(
         f"<li><span>{_esc(g.label)}</span>"
         f'<span class="noise-count">{g.total_count}</span></li>'
@@ -1145,6 +1156,7 @@ def _noise_section(ctx: HtmlPageContext) -> str:
     )
     return f"""<section class="section">
   <h2 class="section-title">🗑️ Шум (сгруппировано)</h2>
+  <p class="stub-card" style="margin-bottom:12px">Типовые инфраструктурные ошибки, вынесенные из основной таблицы (file_put_contents, ClickHouse).</p>
   <ul class="noise-list">{items}</ul>
 </section>"""
 
@@ -1168,7 +1180,6 @@ def _charts_js(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
     ]
     sev_colors = ["#f96b6b", "#f5a623", "#a78bfa", "#3ecf8e"]
     top_labels, top_values, top_colors = _top10_chart_data(ctx, reg)
-    has_trends = bool(ctx.trend_labels and ctx.trend_values)
 
     tooltip = {
         "backgroundColor": "#1e2029",
@@ -1223,29 +1234,6 @@ def _charts_js(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
         "    },",
         "  });",
     ]
-
-    if has_trends:
-        lines.extend([
-            "",
-            "  new Chart(document.getElementById('chartTrends'), {",
-            "    type: 'line',",
-            "    data: {",
-            f"      labels: {json.dumps(ctx.trend_labels, ensure_ascii=False)},",
-            "      datasets: [{",
-            f"        data: {json.dumps(ctx.trend_values)},",
-            "        borderColor: '#5b6af0',",
-            "        backgroundColor: 'rgba(91,106,240,0.15)',",
-            "        fill: true,",
-            "        tension: 0.3,",
-            "        pointRadius: 4,",
-            "      }],",
-            "    },",
-            "    options: {",
-            "      plugins: { legend: { display: false }, tooltip },",
-            "      scales: { x: scaleOpts, y: scaleOpts },",
-            "    },",
-            "  });",
-        ])
 
     lines.append("});")
     return "\n".join(lines)

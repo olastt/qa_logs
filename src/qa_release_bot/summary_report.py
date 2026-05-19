@@ -102,7 +102,7 @@ def _render_totals(report: SummaryReport) -> list[str]:
 
 
 def _render_decision(report: SummaryReport) -> list[str]:
-    lines = ["## 🚦 Оценка", report.decision.headline, ""]
+    lines = [report.decision.headline.replace("**", ""), ""]
     for item in report.decision.items:
         lines.append(f"- {item}")
     return lines
