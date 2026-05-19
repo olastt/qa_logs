@@ -1,0 +1,46 @@
+# Пары окружений test ↔ stage для сравнительного QA-отчёта
+
+comparisons:
+  - name: vetmanager-extjs
+    instance: hetzner
+    test_slug: vetmanager-extjs-test
+    stage_slug: vetmanager-extjs-stage
+
+# Сводка по одному проекту (без test↔stage): qa-release-bot summary
+summaries:
+  - name: webapps-widgets-test
+    instance: selectel
+    project_slug: webappswidgets-test
+    label: "webapps(widgets)-test"
+
+# stats_period передаётся в API Glitchtip (24h, 14d, …)
+stats_period: 14d
+issue_query: is:unresolved
+
+# Лимиты строк в отчёте (остальное — «… ещё N»)
+report_limits:
+  max_critical: 20
+  max_new_in_stage: 20
+  max_regressions: 20
+  max_env_only_list: 30
+  max_infra: 15
+  max_noise: 10
+  title_max_len: 90
+
+# Куда сохранять .txt и .pdf при `qa-release-bot report --legacy` (без -o)
+output_dir: reports
+
+# Снапшоты issues: snapshots/YYYY-MM-DD_{test|stage}.json
+snapshots_dir: snapshots
+
+# Для регрессий: first_seen на stage позже этой даты (опционально)
+# last_deploy_date: 2026-05-12
+
+# API Glitchtip (429 Too Many Requests)
+api:
+  max_retries: 8              # повторы при 429/5xx
+  retry_base_sec: 3           # пауза между повторами (растёт)
+  delay_between_requests_sec: 1 # пауза перед каждым GET
+  enrich_stack: true
+  enrich_stack_max_issues: 25   # полный стек только у top-N по count
+  enrich_stack_delay_sec: 0.3   # пауза между запросами events/latest

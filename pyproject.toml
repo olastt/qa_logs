@@ -1,0 +1,31 @@
+[project]
+name = "qa-release-bot"
+version = "0.1.0"
+description = "QA Release Bot — мониторинг Glitchtip, группировка и классификация ошибок"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+    "reportlab>=4.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-httpx>=0.30", "ruff>=0.4"]
+
+[project.scripts]
+qa-release-bot = "qa_release_bot.cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

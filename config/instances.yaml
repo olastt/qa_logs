@@ -1,0 +1,33 @@
+# Slug проектов — как в Glitchtip API (GET /api/0/projects/).
+# Имена вроде webapps(widgets)-* в UI соответствуют slug webappswidgets-*.
+
+instances:
+  hetzner:
+    base_url_env: GLITCHTIP_HETZNER_URL
+    token_env: GLITCHTIP_HETZNER_TOKEN
+    projects:
+      - slug: flutter-doctor-app-production
+      - slug: flutter-doctor-app-test
+      - slug: mobilebackend-production
+      - slug: mobilebackend-test
+      - slug: vetmanager-extjs-production
+      - slug: vetmanager-extjs-review
+      - slug: vetmanager-extjs-stage
+      - slug: vetmanager-extjs-test
+      - slug: vetmanager-link-production
+      - slug: vetmanager-link-test
+      - slug: webappswidgets-production
+        label: "webapps(widgets)-production"
+      - slug: webappswidgets-test
+        label: "webapps(widgets)-review-feature-test"
+
+  selectel:
+    base_url_env: GLITCHTIP_SELECTEL_URL
+    token_env: GLITCHTIP_SELECTEL_TOKEN
+    projects:
+      - slug: vetmanager-extjs-production
+      - slug: flutter-doctor-app-production
+      - slug: webappswidgets-production
+        label: "webapps(widgets)-production"
+      - slug: webappswidgets-test
+        label: "webapps(widgets)-test"

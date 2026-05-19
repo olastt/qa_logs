@@ -1,0 +1,22 @@
+# Карта модулей: техническое имя → понятное QA-название
+# При новых контроллерах — дополняйте этот файл
+
+modules:
+  ERestController: REST API (внешние интеграции)
+  InvoiceDocumentController: Счета и документы
+  MedicalCardsController: Медицинские карты пациентов
+  ReportConstructorTask: Построитель отчётов
+  Prescription: Модуль рецептов
+  "CActiveRecord::delete": Удаление записи в БД
+  "CActiveRecord::save": Сохранение записи в БД
+  "CActiveRecord::saveAttributes": Обновление полей записи в БД
+  "CDbCommand::execute": Выполнение SQL-запроса
+  "CDbCommand::queryInternal": Чтение данных из БД
+  RabbitMQ: Фоновые задачи и очереди
+  ClickHouse: Аналитика и логирование
+  TaskMGR: Менеджер фоновых задач
+  MARKING_CODE: Маркировка товаров (Честный знак)
+  Workers: Фоновые воркеры
+  ReportConstructorDailyRecalc: Построитель отчётов (ежедневный пересчёт)
+  FiscalRegisterData: Фискальный регистратор
+  Hook: Webhooks / интеграционные хуки
