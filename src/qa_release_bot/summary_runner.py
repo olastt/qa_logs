@@ -151,8 +151,9 @@ class SingleProjectSummaryRunner:
         log.info("new_issues_today", count=len(new_items), project=project.slug)
         self._snapshots.save(snap_env, raw)
 
-        deduped, noise_groups = group_noise_issues(raw)
+        deduped, noise_groups, noise_stats = group_noise_issues(raw)
         level_sections = split_by_glitchtip_level(deduped)
+        product_count = sum(len(issues) for _, issues in level_sections)
         decision = decide_summary_by_level(level_sections)
         summary = SummaryReport(
             product_name=ref["name"],
@@ -162,6 +163,9 @@ class SingleProjectSummaryRunner:
             fetched_at=fetched_at,
             decision=decision,
             total_unresolved=len(raw),
+            product_issue_count=product_count,
+            noise_excluded_count=noise_stats.noise_excluded,
+            before_title_dedupe_count=noise_stats.before_title_dedupe,
             level_sections=level_sections,
             noise_groups=noise_groups,
             new_issues=new_items,

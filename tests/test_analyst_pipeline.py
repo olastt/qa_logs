@@ -35,7 +35,7 @@ def test_noise_grouping():
         _issue("ErrorException: file_put_contents(/tmp/b)", 1),
         _issue("Real bug", 5),
     ]
-    deduped, noise = group_noise_issues(issues)
+    deduped, noise, _ = group_noise_issues(issues)
     assert len(noise) == 1
     assert noise[0].issue_count == 2
     assert any(i.title == "Real bug" for i in deduped)

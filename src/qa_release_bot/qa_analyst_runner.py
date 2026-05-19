@@ -104,8 +104,8 @@ class QAAnalystRunner:
         self._snapshots.save("test", test_raw)
         self._snapshots.save("stage", stage_raw)
 
-        test_deduped, _ = group_noise_issues(test_raw)
-        stage_deduped, noise_groups = group_noise_issues(stage_raw)
+        test_deduped, _, _ = group_noise_issues(test_raw)
+        stage_deduped, noise_groups, _ = group_noise_issues(stage_raw)
 
         diff_rows = build_stage_diff(stage_deduped, prev_tuesday_stage)
         diff_available = prev_tuesday_stage is not None

@@ -23,6 +23,10 @@ class SummaryReport:
     fetched_at: datetime
     decision: ReleaseDecision
     total_unresolved: int
+    product_issue_count: int = 0
+    noise_excluded_count: int = 0
+    before_title_dedupe_count: int = 0
+    api_fetch_limit: int = 100
     project_id: str = ""
     level_sections: list[tuple[str, list[IssueRecord]]] = field(default_factory=list)
     blockers: list[IssueRecord] = field(default_factory=list)
@@ -94,7 +98,11 @@ def _render_new_issues(report: SummaryReport) -> list[str]:
 
 
 def _render_totals(report: SummaryReport) -> list[str]:
-    product = total_in_sections(report.level_sections)
+    product = report.product_issue_count or total_in_sections(report.level_sections)
+    merged = max(0, report.before_title_dedupe_count - product)
+    cap = ""
+    if report.total_unresolved >= report.api_fetch_limit:
+        cap = f" (не более **{report.api_fetch_limit}** за один запрос API)"
     level_bits = " · ".join(
         f"**{level_display(level)}** {len(issues)}"
         for level, issues in report.level_sections
@@ -102,9 +110,12 @@ def _render_totals(report: SummaryReport) -> list[str]:
     )
     return [
         "## 📊 Итого",
-        f"- Нерешённых в API: **{report.total_unresolved}**",
-        f"- После отсечения шума: **{product}**",
-        f"- По Level: {level_bits or '—'}",
+        f"- Загружено из Glitchtip (`{report.issue_query}` · {report.stats_period}): "
+        f"**{report.total_unresolved}** issue{cap}",
+        f"- Вынесено в «Шум» (file_put_contents, ClickHouse): **{report.noise_excluded_count}**",
+        f"- После объединения одинаковых title: **{product}** "
+        f"({report.before_title_dedupe_count} → {product}, схлопнуто **{merged}**)",
+        f"- В плитках и секциях по Level: {level_bits or '—'} (сумма = **{product}**)",
     ]
 
 

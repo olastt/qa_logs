@@ -23,7 +23,18 @@ def is_clickhouse(title: str) -> bool:
     return "clickhouse" in t
 
 
-def group_noise_issues(issues: list[IssueRecord]) -> tuple[list[IssueRecord], list[GroupedNoise]]:
+@dataclass(slots=True)
+class NoiseSplitStats:
+    """Сколько issue отфильтровано до карточек в отчёте."""
+
+    noise_excluded: int
+    before_title_dedupe: int
+    after_title_dedupe: int
+
+
+def group_noise_issues(
+    issues: list[IssueRecord],
+) -> tuple[list[IssueRecord], list[GroupedNoise], NoiseSplitStats]:
     file_puts: list[IssueRecord] = []
     clickhouse: list[IssueRecord] = []
     rest: list[IssueRecord] = []
@@ -56,7 +67,13 @@ def group_noise_issues(issues: list[IssueRecord]) -> tuple[list[IssueRecord], li
             )
         )
 
-    return dedupe_by_title(rest), grouped
+    deduped = dedupe_by_title(rest)
+    stats = NoiseSplitStats(
+        noise_excluded=len(file_puts) + len(clickhouse),
+        before_title_dedupe=len(rest),
+        after_title_dedupe=len(deduped),
+    )
+    return deduped, grouped, stats
 
 
 def dedupe_by_title(issues: list[IssueRecord]) -> list[IssueRecord]:

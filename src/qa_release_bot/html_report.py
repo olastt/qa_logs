@@ -463,6 +463,10 @@ class HtmlPageContext:
     stage_unique_count: int = 0
     shared_count: int = 0
     total_api: int | None = None
+    product_issue_count: int = 0
+    noise_excluded_count: int = 0
+    before_title_dedupe_count: int = 0
+    api_fetch_limit: int = 100
     show_diff: bool = True
     is_summary: bool = False
     level_sections: list[tuple[str, list[IssueRecord]]] = field(default_factory=list)
@@ -551,6 +555,10 @@ def build_summary_html_context(
         noise_groups=report.noise_groups,
         env_label="test",
         total_api=report.total_unresolved,
+        product_issue_count=report.product_issue_count,
+        noise_excluded_count=report.noise_excluded_count,
+        before_title_dedupe_count=report.before_title_dedupe_count,
+        api_fetch_limit=report.api_fetch_limit,
         show_diff=False,
         is_summary=True,
         glitchtip_base_url=glitchtip_base_url.rstrip("/"),
@@ -877,6 +885,8 @@ def _header(ctx: HtmlPageContext, fetched: datetime) -> str:
             f'<p class="env-stats">TEST: {ctx.test_unique_count} · '
             f"STAGE: {ctx.stage_unique_count} · Общих: {ctx.shared_count}</p>"
         )
+    elif ctx.total_api is not None and ctx.is_summary:
+        env_line = _summary_count_explain(ctx)
     elif ctx.total_api is not None:
         env_line = f'<p class="env-stats">Всего unresolved (API): {ctx.total_api}</p>'
     return f"""<header class="header">
@@ -887,6 +897,24 @@ def _header(ctx: HtmlPageContext, fetched: datetime) -> str:
   </div>
   <span class="badge-period">{period_badge}</span>
 </header>"""
+
+
+def _summary_count_explain(ctx: HtmlPageContext) -> str:
+    product = ctx.product_issue_count or total_in_sections(ctx.level_sections)
+    merged = max(0, ctx.before_title_dedupe_count - product)
+    cap = ""
+    if ctx.total_api is not None and ctx.total_api >= ctx.api_fetch_limit:
+        cap = f" (макс. {ctx.api_fetch_limit} за запрос API)"
+    return (
+        '<p class="env-stats">'
+        f"<strong>Из Glitchtip:</strong> {ctx.total_api} issue "
+        f"<code>{_esc(ctx.issue_query)}</code> · {_esc(ctx.stats_period)}{cap}<br/>"
+        f"<strong>В отчёте (плитки FATAL/ERROR/…):</strong> {product} уникальных issue — "
+        f"без шума ({ctx.noise_excluded_count}), "
+        f"после объединения одинаковых title "
+        f"({ctx.before_title_dedupe_count} → {product}, −{merged})"
+        "</p>"
+    )
 
 
 def _max_level_sections_count(ctx: HtmlPageContext) -> int:
@@ -901,7 +929,7 @@ def _metrics_by_level(ctx: HtmlPageContext, total: int) -> str:
             continue
         lbl, _, color = level_badge(level)
         tiles.append((len(issues), lbl, color, color))
-    tiles.append((total, "ВСЕГО", "#5b6af0", "#818cf8"))
+    tiles.append((total, "В ОТЧЁТЕ", "#5b6af0", "#818cf8"))
     cards = []
     for num, lbl, stripe, color in tiles:
         cards.append(
