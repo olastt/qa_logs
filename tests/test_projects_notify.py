@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from qa_release_bot.config import Settings, build_summary_ref, load_report_config
 from qa_release_bot.notify_format import (
     format_release_notify,
     format_summary_notify,
