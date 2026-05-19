@@ -48,7 +48,7 @@ qa-release-bot poll
 | `GLITCHTIP_HETZNER_TOKEN` | API token |
 | `GLITCHTIP_SELECTEL_URL` | URL Selectel Glitchtip |
 | `GLITCHTIP_SELECTEL_TOKEN` | API token |
-| `GLITCHTIP_ORG_SLUG` | `vetmanager` |
+| `GLITCHTIP_ORG_SLUG` | `vetmanager` (если Secret пустой — подставится автоматически) |
 | `BITRIX_WEBHOOK_URL` | Webhook Bitrix24 (без `/im.message.add`) |
 | `BITRIX_CHAT_ID` | ID чата |
 | `SURGE_TOKEN` | Токен [surge.sh](https://surge.sh) |

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,6 +14,10 @@ from qa_release_bot.issue_record import IssueRecord, StackFrame
 from qa_release_bot.models import GlitchtipIssue, GlitchtipProjectRef
 
 log = structlog.get_logger(__name__)
+
+
+class GlitchtipApiError(RuntimeError):
+    """Ответ Glitchtip не JSON или пустой — неверный URL, org_slug или токен."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,8 +73,26 @@ class GlitchtipClient:
         response.raise_for_status()
         return response
 
+    def _parse_json(self, response: httpx.Response) -> Any:
+        url = str(response.request.url)
+        body = (response.text or "").strip()
+        if not body:
+            raise GlitchtipApiError(
+                f"Пустой ответ Glitchtip (HTTP {response.status_code}): {url}\n"
+                "Проверьте GLITCHTIP_*_URL, GLITCHTIP_ORG_SLUG (vetmanager) и токен."
+            )
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError as exc:
+            preview = body[:400].replace("\n", " ")
+            raise GlitchtipApiError(
+                f"Не JSON от Glitchtip (HTTP {response.status_code}): {url}\n"
+                f"Начало ответа: {preview!r}\n"
+                "Часто: неверный org_slug, токен без прав или URL не API."
+            ) from exc
+
     def list_projects(self) -> list[dict[str, Any]]:
-        return self._get("/api/0/projects/").json()
+        return self._parse_json(self._get("/api/0/projects/"))
 
     def list_issues(
         self,
@@ -80,12 +103,19 @@ class GlitchtipClient:
         limit: int = 100,
     ) -> list[GlitchtipIssue]:
         path = f"/api/0/projects/{project.org_slug}/{project.slug}/issues/"
-        data = self._get(
-            path,
-            query=query,
-            statsPeriod=stats_period,
-            limit=limit,
-        ).json()
+        data = self._parse_json(
+            self._get(
+                path,
+                query=query,
+                statsPeriod=stats_period,
+                limit=limit,
+            )
+        )
+        if not isinstance(data, list):
+            raise GlitchtipApiError(
+                f"Ожидался список issues, получено {type(data).__name__} "
+                f"для {project.org_slug}/{project.slug}"
+            )
         return [self._parse_issue(item, project) for item in data]
 
     def fetch_issue_records(
@@ -152,7 +182,9 @@ class GlitchtipClient:
             if response.status_code == 429:
                 return _frames_from_metadata({})
             response.raise_for_status()
-            return _extract_frames(response.json())
+            return _extract_frames(self._parse_json(response))
+        except GlitchtipApiError:
+            return []
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 log.warning("stack_skipped_rate_limit", issue_id=issue_id)

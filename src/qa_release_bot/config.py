@@ -41,6 +41,11 @@ class Settings(BaseSettings):
             return value.strip()
         return value
 
+    @field_validator("glitchtip_org_slug", mode="after")
+    @classmethod
+    def _org_slug_default(cls, value: str) -> str:
+        return value or "vetmanager"
+
 
 def load_instances_config(path: Path | None = None) -> dict[str, Any]:
     config_path = path or Path(__file__).resolve().parents[2] / "config" / "instances.yaml"

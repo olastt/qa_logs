@@ -96,14 +96,17 @@ jobs:
           export GLITCHTIP_HETZNER_TOKEN="$(trim "$GLITCHTIP_HETZNER_TOKEN")"
           export GLITCHTIP_SELECTEL_URL="$(trim "$GLITCHTIP_SELECTEL_URL")"
           export GLITCHTIP_SELECTEL_TOKEN="$(trim "$GLITCHTIP_SELECTEL_TOKEN")"
-          export GLITCHTIP_ORG_SLUG="$(trim "$GLITCHTIP_ORG_SLUG")"
+          export GLITCHTIP_ORG_SLUG="$(trim "${GLITCHTIP_ORG_SLUG:-vetmanager}")"
+          if [ -z "$GLITCHTIP_ORG_SLUG" ]; then
+            export GLITCHTIP_ORG_SLUG=vetmanager
+          fi
           ARGS="--command ${{ steps.params.outputs.command }}"
           ARGS="$ARGS --summary-name ${{ steps.params.outputs.summary_name }}"
           if [ "${{ steps.params.outputs.no_stack }}" = "true" ]; then
             ARGS="$ARGS --no-stack"
           fi
+          set -o pipefail
           python scripts/github_actions_runner.py $ARGS 2>&1 | tee run.log
-        continue-on-error: true
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4

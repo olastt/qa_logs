@@ -28,6 +28,32 @@ def _latest_html(out_dir: Path, pattern: str) -> Path | None:
     return files[0] if files else None
 
 
+def _validate_settings(settings: Settings, command: str, summary_name: str) -> None:
+    from qa_release_bot.config import build_summary_ref, instance_credentials, load_report_config
+
+    if command == "report":
+        instance = "hetzner"
+    elif command == "summary":
+        ref = build_summary_ref(settings, load_report_config(), name=summary_name)
+        instance = ref["instance"]
+    else:
+        return
+
+    url, token = instance_credentials(settings, instance)
+    org = settings.glitchtip_org_slug or "vetmanager"
+    missing: list[str] = []
+    if not url:
+        missing.append(f"GLITCHTIP_{instance.upper()}_URL" if instance == "hetzner" else "GLITCHTIP_SELECTEL_URL")
+    if not token:
+        missing.append(
+            "GLITCHTIP_HETZNER_TOKEN" if instance == "hetzner" else "GLITCHTIP_SELECTEL_TOKEN"
+        )
+    if missing:
+        raise ValueError("Не заданы Secrets: " + ", ".join(missing))
+    if not org:
+        raise ValueError("GLITCHTIP_ORG_SLUG пустой — укажите vetmanager")
+
+
 def _save_ci_artifacts(out_dir: Path, message: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "ci_message.txt").write_text(message, encoding="utf-8")
@@ -144,6 +170,7 @@ def main() -> None:
     args = parser.parse_args()
 
     settings = Settings()
+    _validate_settings(settings, args.command, args.summary_name)
     try:
         if args.command == "report":
             message = _run_report(settings, no_stack=args.no_stack)
