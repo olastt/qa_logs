@@ -47,6 +47,7 @@ class QAAnalystRunner:
     def run(
         self,
         *,
+        project_name: str | None = None,
         save_markdown: Path | None = None,
         save_html: bool = True,
         save_pdf: bool = False,
@@ -57,7 +58,15 @@ class QAAnalystRunner:
         if not comparisons:
             raise RuntimeError("Нет пар test/stage в config/report.yaml")
 
-        pair = comparisons[0]
+        if project_name:
+            pair = next((c for c in comparisons if c["name"] == project_name), None)
+            if pair is None:
+                known = ", ".join(c["name"] for c in comparisons)
+                raise ValueError(
+                    f"Проект релиза «{project_name}» не найден. Доступны: {known}"
+                )
+        else:
+            pair = comparisons[0]
         product = pair["name"]
         instance = pair["instance"]
         test_ref = pair["test"]

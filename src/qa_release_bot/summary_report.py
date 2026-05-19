@@ -28,6 +28,7 @@ class SummaryReport:
     lows: list[IssueRecord] = field(default_factory=list)
     noise_groups: list[GroupedNoise] = field(default_factory=list)
     new_issues: list[NewIssueItem] = field(default_factory=list)
+    disappeared_count: int = 0
     is_first_run: bool = False
     stats_period: str = "14d"
     issue_query: str = "is:unresolved"

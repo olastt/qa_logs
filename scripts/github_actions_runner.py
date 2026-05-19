@@ -1,201 +1,103 @@
 #!/usr/bin/env python3
-"""Запуск qa-release-bot в CI и формирование текста для Bitrix24."""
+"""Запуск qa-bot в GitHub Actions."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT / "scripts"))
 
-from qa_release_bot.bot import QAReleaseBot  # noqa: E402
-from qa_release_bot.config import (  # noqa: E402
-    Settings,
-    build_project_refs,
-    load_report_config,
-    report_output_dir,
+from qa_release_bot.config import Settings, load_report_config, report_output_dir  # noqa: E402
+from qa_release_bot.notify_format import format_failure_notify  # noqa: E402
+from qa_release_bot.projects import ALL_PROJECTS_LABEL, list_cli_projects  # noqa: E402
+from qa_release_bot.run_facade import (  # noqa: E402
+    append_ci_message,
+    notify_with_url,
+    run_release,
+    run_summary,
 )
-from qa_release_bot.qa_analyst_runner import QAAnalystRunner  # noqa: E402
-from qa_release_bot.summary_runner import SingleProjectSummaryRunner  # noqa: E402
 
 
-def _latest_html(out_dir: Path, pattern: str) -> Path | None:
-    files = sorted(out_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+def _projects_for_command(command: str) -> list[str]:
+    return [p.id for p in list_cli_projects() if p.kind == command]
 
 
-def _validate_settings(settings: Settings, command: str, summary_name: str) -> None:
-    from qa_release_bot.config import build_summary_ref, instance_credentials, load_report_config
-
-    if command == "report":
-        instance = "hetzner"
-    elif command == "summary":
-        ref = build_summary_ref(settings, load_report_config(), name=summary_name)
-        instance = ref["instance"]
-    else:
-        return
-
-    url, token = instance_credentials(settings, instance)
-    org = settings.glitchtip_org_slug or "vetmanager"
-    missing: list[str] = []
-    if not url:
-        missing.append(f"GLITCHTIP_{instance.upper()}_URL" if instance == "hetzner" else "GLITCHTIP_SELECTEL_URL")
-    if not token:
-        missing.append(
-            "GLITCHTIP_HETZNER_TOKEN" if instance == "hetzner" else "GLITCHTIP_SELECTEL_TOKEN"
+def _run_one(command: str, project_id: str, *, no_stack: bool) -> str:
+    settings = Settings()
+    if command == "release":
+        result = run_release(
+            project_id,
+            settings,
+            save_html=True,
+            no_stack=no_stack,
+            print_console=False,
         )
-    if missing:
-        raise ValueError("Не заданы Secrets: " + ", ".join(missing))
-    if not org:
-        raise ValueError("GLITCHTIP_ORG_SLUG пустой — укажите vetmanager")
-
-
-def _save_ci_artifacts(out_dir: Path, message: str) -> None:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "ci_message.txt").write_text(message, encoding="utf-8")
-
-
-def _run_report(settings: Settings, *, no_stack: bool) -> str:
-    cfg = load_report_config()
-    out_dir = Path(report_output_dir(cfg))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    md_path = out_dir / f"qa-release-{stamp}.md"
-
-    report = QAAnalystRunner(settings).run(
-        save_markdown=md_path,
-        save_html=True,
-        save_pdf=False,
-        print_console=False,
-        enrich_stack=False if no_stack else None,
-    )
-    html_path = _latest_html(out_dir, "qa_report_*.html")
-    lines = [
-        "🐾 QA Release Bot — отчёт vetmanager-extjs (test + stage)",
-        f"📅 {report.fetched_at.strftime('%Y-%m-%d %H:%M UTC')}",
-        "",
-        report.decision.headline.replace("**", ""),
-        f"🔴 Blocker: {len(report.blockers)} · 🟠 High: {len(report.highs)} · "
-        f"🟡 Medium: {len(report.mediums)} · 🟢 Low: {len(report.lows)}",
-        f"🆕 Новые (stage): {len(report.new_issues_stage)} · "
-        f"новые (test): {len(report.new_issues_test)}",
-    ]
-    if report.decision.items:
-        lines.append("")
-        lines.append("Топ проблем:")
-        for item in report.decision.items[:8]:
-            lines.append(f"• {item}")
-    if html_path:
-        lines.append("")
-        lines.append(f"📄 HTML: {html_path.name} → Surge → Bitrix")
-    lines.append(f"📝 Markdown: {md_path.name}")
-    text = "\n".join(lines)
-    _save_ci_artifacts(out_dir, text)
-    return text
-
-
-def _run_summary(settings: Settings, name: str, *, no_stack: bool) -> str:
-    cfg = load_report_config()
-    out_dir = Path(report_output_dir(cfg))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    md_path = out_dir / f"summary-{stamp}.md"
-
-    summary = SingleProjectSummaryRunner(settings).run(
-        name=name,
-        save_markdown=md_path,
-        save_html=True,
-        save_pdf=False,
-        print_console=False,
-        enrich_stack=False if no_stack else None,
-    )
-    html_path = _latest_html(out_dir, f"summary_{summary.project_slug.replace('/', '-')}_*.html")
-    if not html_path:
-        html_path = _latest_html(out_dir, "summary_*.html")
-
-    lines = [
-        f"🐾 QA Release Bot — сводка {summary.product_name}",
-        f"📍 {summary.instance} / {summary.project_slug}",
-        f"📅 {summary.fetched_at.strftime('%Y-%m-%d %H:%M UTC')}",
-        "",
-        summary.decision.headline.replace("**", ""),
-        f"Всего unresolved: {summary.total_unresolved}",
-        f"🔴 Blocker: {len(summary.blockers)} · 🟠 High: {len(summary.highs)} · "
-        f"🟡 Medium: {len(summary.mediums)} · 🟢 Low: {len(summary.lows)}",
-        f"🆕 Новые: {len(summary.new_issues)}",
-    ]
-    if summary.decision.items:
-        lines.append("")
-        for item in summary.decision.items[:8]:
-            lines.append(f"• {item}")
-    if html_path:
-        lines.append("")
-        lines.append(f"📄 HTML: {html_path.name} → Surge → Bitrix")
-    text = "\n".join(lines)
-    _save_ci_artifacts(out_dir, text)
-    return text
-
-
-def _run_once(settings: Settings) -> str:
-    bot = QAReleaseBot(settings)
-    bot.run_once()
-    return "🐾 QA Release Bot — run-once завершён (см. логи Actions)"
-
-
-def _list_projects(settings: Settings) -> str:
-    lines = ["🐾 QA Release Bot — проекты:"]
-    for ref in build_project_refs(settings):
-        lines.append(f"• [{ref.instance}] {ref.display_name} ({ref.slug})")
-    return "\n".join(lines) if len(lines) > 1 else "Проекты не найдены (проверьте токены в Secrets)"
+    else:
+        result = run_summary(
+            project_id,
+            settings,
+            save_html=True,
+            no_stack=no_stack,
+            print_console=False,
+        )
+    return result.notify_text
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--command",
-        required=True,
-        choices=["report", "summary", "run-once", "list-projects"],
-    )
-    parser.add_argument(
-        "--summary-name",
-        default="webapps-widgets-test",
-        help="name из config/report.yaml → summaries",
-    )
-    parser.add_argument("--no-stack", action="store_true")
-    parser.add_argument("--notify", action="store_true")
+    parser.add_argument("command", choices=["release", "summary"])
+    parser.add_argument("project", help="ID проекта или «ВСЕ ПРОЕКТЫ»")
+    parser.add_argument("--no-stack", action="store_true", default=True)
     args = parser.parse_args()
 
-    settings = Settings()
-    _validate_settings(settings, args.command, args.summary_name)
-    try:
-        if args.command == "report":
-            message = _run_report(settings, no_stack=args.no_stack)
-        elif args.command == "summary":
-            message = _run_summary(settings, args.summary_name, no_stack=args.no_stack)
-        elif args.command == "run-once":
-            message = _run_once(settings)
-        else:
-            message = _list_projects(settings)
-    except Exception as exc:
-        message = f"❌ QA Release Bot — ошибка ({args.command}):\n{exc}"
-        print(message, file=sys.stderr)
-        if args.notify:
-            from bitrix_notify import send_message
-
-            send_message(message)
-        raise
-
-    print(message)
     cfg = load_report_config()
     out_dir = Path(report_output_dir(cfg))
-    if args.command in ("run-once", "list-projects"):
-        _save_ci_artifacts(out_dir, message)
-    elif not (out_dir / "ci_message.txt").is_file():
-        _save_ci_artifacts(out_dir, message)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.project.strip().upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
+        project_ids = _projects_for_command(args.command)
+    else:
+        project_ids = [args.project.strip()]
+
+    messages: list[str] = []
+    failed = False
+    for pid in project_ids:
+        try:
+            text = _run_one(args.command, pid, no_stack=args.no_stack)
+            messages.append(text)
+            print(text)
+        except Exception as exc:
+            failed = True
+            text = format_failure_notify(pid, args.command, str(exc))
+            messages.append(text)
+            print(text, file=sys.stderr)
+
+    append_ci_message(out_dir, messages)
+
+    # Список доменов Surge для workflow
+    surge_jobs: list[dict[str, str]] = []
+    for pid in project_ids:
+        meta_path = out_dir / f"ci_meta_{pid}.json"
+        if meta_path.is_file():
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            surge_jobs.append(
+                {
+                    "project_id": pid,
+                    "domain": str(meta.get("surge_domain", "")),
+                    "html_path": str(meta.get("html_path", "")),
+                }
+            )
+    (out_dir / "ci_surge.json").write_text(
+        json.dumps(surge_jobs, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -1,165 +1,189 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from qa_release_bot.bot import QAReleaseBot
 from qa_release_bot.config import Settings, build_project_refs, load_report_config, report_output_dir
 from qa_release_bot.logging_setup import configure_logging
-from qa_release_bot.qa_analyst_runner import QAAnalystRunner
-from qa_release_bot.qa_report import QAReportRunner
-from qa_release_bot.summary_runner import SingleProjectSummaryRunner
+from qa_release_bot.projects import ALL_PROJECTS_LABEL, list_cli_projects
+from qa_release_bot.run_facade import (
+    append_ci_message,
+    notify_with_url,
+    run_release,
+    run_summary,
+)
+
+
+def _add_common_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--html",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Сохранить HTML-отчёт (по умолчанию включено)",
+    )
+    parser.add_argument(
+        "--no-stack",
+        action="store_true",
+        help="Не загружать стек-трейсы (быстрее)",
+    )
+    parser.add_argument(
+        "--notify",
+        action="store_true",
+        help="Отправить результат в Bitrix24 (нужны BITRIX_* в окружении)",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Логи API в stderr")
+
+
+def _run_for_projects(
+    command: str,
+    project_ids: list[str],
+    settings: Settings,
+    *,
+    save_html: bool,
+    no_stack: bool,
+) -> int:
+    messages: list[str] = []
+    exit_code = 0
+    cfg = load_report_config()
+    out_dir = Path(report_output_dir(cfg))
+
+    for pid in project_ids:
+        try:
+            if command == "release":
+                result = run_release(
+                    pid,
+                    settings,
+                    save_html=save_html,
+                    no_stack=no_stack,
+                    print_console=len(project_ids) == 1,
+                )
+            else:
+                result = run_summary(
+                    pid,
+                    settings,
+                    save_html=save_html,
+                    no_stack=no_stack,
+                    print_console=len(project_ids) == 1,
+                )
+            messages.append(result.notify_text)
+            print(result.notify_text)
+        except Exception as exc:
+            exit_code = 1
+            msg = f"❌ Ошибка: {command} {pid}\n{exc}"
+            messages.append(msg)
+            print(msg, file=sys.stderr)
+
+    if messages:
+        append_ci_message(out_dir, messages)
+    return exit_code
+
+
+def _maybe_bitrix(messages: list[str], report_url: str = "") -> None:
+    scripts_dir = Path(__file__).resolve().parents[2] / "scripts"
+    if scripts_dir.is_dir() and str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from bitrix_notify import send_message
+    except ImportError:
+        return
+    text = "\n\n".join(messages)
+    if report_url:
+        text = notify_with_url(text, report_url)
+    send_message(text)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="QA Release Bot — Glitchtip monitor")
-    sub = parser.add_subparsers(dest="command")
+    parser = argparse.ArgumentParser(
+        prog="qa-bot",
+        description="QA Bot — проверка релиза и сводки по Glitchtip",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    report_parser = sub.add_parser(
-        "report",
-        help="QA-отчёт аналитика (markdown + снапшоты) — по умолчанию",
-    )
-    report_parser.add_argument(
-        "-o",
-        "--output",
-        metavar="PATH",
-        help="Сохранить markdown (например reports/qa.md)",
-    )
-    report_parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Старый текстовый/PDF отчёт test vs stage",
-    )
-    report_parser.add_argument(
-        "--output-dir",
-        metavar="DIR",
-        default=None,
-        help="Папка отчётов для --legacy",
-    )
-    report_parser.add_argument("--no-save", action="store_true", help="Не сохранять файлы")
-    report_parser.add_argument("--no-console", action="store_true", help="Только файлы")
-    report_parser.add_argument("-v", "--verbose", action="store_true", help="Логи API в stderr")
-    report_parser.add_argument(
-        "--no-stack",
-        action="store_true",
-        help="Не запрашивать events/latest (быстрее, меньше 429)",
-    )
-    report_parser.add_argument("--pdf", action="store_true", help="Дополнительно сохранить PDF")
-    report_parser.add_argument("--no-html", action="store_true", help="Не сохранять HTML")
+    release_p = sub.add_parser("release", help="Проверка готовности релиза (test + stage)")
+    release_p.add_argument("project", help="ID проекта или «ВСЕ ПРОЕКТЫ»")
+    _add_common_flags(release_p)
 
-    summary_parser = sub.add_parser(
-        "summary",
-        help="Сводка по одному проекту (без test↔stage)",
-    )
-    summary_parser.add_argument(
-        "--name",
-        metavar="NAME",
-        help="Имя из config/report.yaml → summaries",
-    )
-    summary_parser.add_argument(
-        "--instance",
-        metavar="INSTANCE",
-        help="Инстанс: hetzner | selectel",
-    )
-    summary_parser.add_argument(
-        "--project",
-        metavar="SLUG",
-        help="Slug проекта в API (напр. webappswidgets-test)",
-    )
-    summary_parser.add_argument(
-        "-o",
-        "--output",
-        metavar="PATH",
-        help="Сохранить markdown",
-    )
-    summary_parser.add_argument("--no-save", action="store_true", help="Не сохранять markdown/pdf")
-    summary_parser.add_argument("--pdf", action="store_true", help="Дополнительно сохранить PDF")
-    summary_parser.add_argument("--no-html", action="store_true", help="Не сохранять HTML")
-    summary_parser.add_argument("--no-console", action="store_true", help="Только файл")
-    summary_parser.add_argument("-v", "--verbose", action="store_true", help="Логи API в stderr")
-    summary_parser.add_argument(
-        "--no-stack",
-        action="store_true",
-        help="Не запрашивать events/latest",
-    )
+    summary_p = sub.add_parser("summary", help="Сводка: что нового с прошлого запуска")
+    summary_p.add_argument("project", help="ID проекта или «ВСЕ ПРОЕКТЫ»")
+    _add_common_flags(summary_p)
 
-    sub.add_parser("run-once", help="Один цикл опроса")
-    sub.add_parser("list-projects", help="Показать проекты из config/instances.yaml")
+    sub.add_parser("projects", help="Список доступных проектов")
 
-    poll = sub.add_parser("poll", help="Бесконечный опрос с интервалом из .env")
-    poll.add_argument("--interval", type=int, default=None, help="Секунды между циклами")
+    # Скрытые команды для совместимости
+    legacy = sub.add_parser("report", help=argparse.SUPPRESS)
+    legacy.add_argument("--legacy", action="store_true")
+    legacy.add_argument("-v", "--verbose", action="store_true")
+    legacy.add_argument("--no-stack", action="store_true")
+
+    sub.add_parser("run-once", help=argparse.SUPPRESS)
+    sub.add_parser("list-projects", help=argparse.SUPPRESS)
+    poll = sub.add_parser("poll", help=argparse.SUPPRESS)
+    poll.add_argument("--interval", type=int, default=None)
 
     args = parser.parse_args()
-    command = args.command or "report"
     configure_logging(verbose=getattr(args, "verbose", False))
     settings = Settings()
 
-    if command == "report":
-        if getattr(args, "legacy", False):
-            QAReportRunner(settings).run_and_export(
-                output=getattr(args, "output", None),
-                output_dir=getattr(args, "output_dir", None),
-                save_files=not getattr(args, "no_save", False),
-                print_console=not getattr(args, "no_console", False),
-            )
-            return
-
-        report_cfg = load_report_config()
-        out_dir = Path(getattr(args, "output_dir", None) or report_output_dir(report_cfg))
-        if getattr(args, "output", None):
-            md_path = Path(args.output)
-        else:
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-            out_dir.mkdir(parents=True, exist_ok=True)
-            md_path = out_dir / f"qa-release-{stamp}.md"
-
-        QAAnalystRunner(settings).run(
-            save_markdown=None if getattr(args, "no_save", False) else md_path,
-            save_html=not getattr(args, "no_html", False) and not getattr(args, "no_save", False),
-            save_pdf=getattr(args, "pdf", False) and not getattr(args, "no_save", False),
-            print_console=not getattr(args, "no_console", False),
-            enrich_stack=False if getattr(args, "no_stack", False) else None,
-        )
+    if args.command == "projects":
+        for p in list_cli_projects():
+            kind = "релиз" if p.kind == "release" else "сводка"
+            print(f"{p.id}  ({kind})")
         return
 
-    if command == "summary":
+    if args.command in ("release", "summary"):
+        raw = args.project.strip()
+        if raw.upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
+            ids = [p.id for p in list_cli_projects() if p.kind == args.command]
+        else:
+            ids = [raw]
+
+        code = _run_for_projects(
+            args.command,
+            ids,
+            settings,
+            save_html=args.html,
+            no_stack=args.no_stack,
+        )
+        if args.notify:
+            out_dir = Path(report_output_dir(load_report_config()))
+            msg = out_dir / "ci_message.txt"
+            if msg.is_file():
+                _maybe_bitrix([msg.read_text(encoding="utf-8")])
+        sys.exit(code)
+
+    if args.command == "report":
+        from datetime import datetime, timezone
+
+        from qa_release_bot.qa_analyst_runner import QAAnalystRunner
+        from qa_release_bot.qa_report import QAReportRunner
+
+        if getattr(args, "legacy", False):
+            QAReportRunner(settings).run_and_export()
+            return
         report_cfg = load_report_config()
         out_dir = Path(report_output_dir(report_cfg))
-        if getattr(args, "output", None):
-            md_path = Path(args.output)
-        elif not getattr(args, "no_save", False):
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-            out_dir.mkdir(parents=True, exist_ok=True)
-            md_path = out_dir / f"summary-{stamp}.md"
-        else:
-            md_path = None
-
-        SingleProjectSummaryRunner(settings).run(
-            name=getattr(args, "name", None),
-            instance=getattr(args, "instance", None),
-            project_slug=getattr(args, "project", None),
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+        md_path = out_dir / f"qa-release-{stamp}.md"
+        QAAnalystRunner(settings).run(
             save_markdown=md_path,
-            save_html=not getattr(args, "no_html", False) and not getattr(args, "no_save", False),
-            save_pdf=getattr(args, "pdf", False) and not getattr(args, "no_save", False),
-            print_console=not getattr(args, "no_console", False),
+            save_html=True,
             enrich_stack=False if getattr(args, "no_stack", False) else None,
         )
         return
 
-    if command == "list-projects":
+    if args.command == "list-projects":
         for ref in build_project_refs(settings):
             print(f"[{ref.instance}] {ref.display_name} ({ref.slug})")
         return
 
     bot = QAReleaseBot(settings)
-
-    if command == "run-once":
+    if args.command == "run-once":
         bot.run_once()
         return
-
-    if command == "poll":
+    if args.command == "poll":
         interval = args.interval or settings.poll_interval_sec
         while True:
             bot.run_once()

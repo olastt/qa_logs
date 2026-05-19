@@ -11,16 +11,12 @@ pip install -e ".[dev]"
 copy .env.example .env
 # заполните GLITCHTIP_*_TOKEN в .env
 
-qa-release-bot report              # markdown + HTML reports/qa_report_YYYY-MM-DD.html
-qa-release-bot report -o reports/qa.md
-qa-release-bot report --pdf        # дополнительно PDF
-qa-release-bot report --legacy     # старый текст + PDF test vs stage
-qa-release-bot summary             # сводка + HTML (config/report.yaml → summaries)
-qa-release-bot summary --instance selectel --project webappswidgets-test
-qa-release-bot summary --pdf       # дополнительно PDF
-qa-release-bot list-projects
-qa-release-bot run-once
-qa-release-bot poll
+qa-bot projects                    # список проектов
+qa-bot release vetmanager-extjs    # проверка релиза (test + stage)
+qa-bot summary webapps-widgets     # сводка: новые / исчезнувшие
+qa-bot release vetmanager-extjs --no-stack --notify
+
+# алиас: qa-release-bot = qa-bot
 ```
 
 Токены только в `.env`, не в репозитории.
@@ -29,16 +25,17 @@ qa-release-bot poll
 
 ## GitHub Actions
 
-Вкладка **Actions → QA Logs (Glitchtip) → Run workflow** — ручной запуск с выбором команды.
+Вкладка **Actions → QA Logs (Glitchtip) → Run workflow**:
 
-| Input | Описание |
-|--------|----------|
-| `report` | QA-отчёт vetmanager-extjs test + stage |
-| `summary` | Сводка по одному проекту (Selectel widgets) |
-| `run-once` | Один цикл опроса |
-| `list-projects` | Список проектов из config |
+| Поле | Значение |
+|------|----------|
+| Что запустить | 🚦 Проверить релиз / 📊 Сводка |
+| Проект | extjs / widgets / laravel / все сразу |
+| Bitrix24 | да / нет |
 
-По расписанию (пн–пт 10:00 МСК) автоматически запускается `report`.
+По расписанию (пн–пт 10:00 МСК) — `release vetmanager-extjs`.
+
+Отчёты публикуются на Surge: `qa-extjs-release.surge.sh`, `qa-widgets-summary.surge.sh` и т.д.
 
 ### Secrets (Settings → Secrets and variables → Actions)
 

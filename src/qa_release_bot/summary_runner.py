@@ -73,6 +73,7 @@ class SingleProjectSummaryRunner:
 
         prev = self._snapshots.load_latest_before(snap_env, reference=today)
         is_first_run = prev is None
+        prev_ids = set(prev.keys()) if prev else set()
 
         api_opts = api_client_options(self._report_config)
         if enrich_stack is False:
@@ -85,6 +86,9 @@ class SingleProjectSummaryRunner:
             raw = client.fetch_issue_records(
                 project, query=query, stats_period=stats_period
             )
+
+        current_ids = {i.id for i in raw}
+        disappeared_count = len(prev_ids - current_ids) if prev_ids else 0
 
         new_items = find_new_issues_by_id(
             raw, prev, environment=snap_env, last_deploy=deploy
@@ -111,6 +115,7 @@ class SingleProjectSummaryRunner:
             lows=by_sev[IssueSeverity.LOW],
             noise_groups=noise_groups,
             new_issues=new_items,
+            disappeared_count=disappeared_count,
             is_first_run=is_first_run,
             stats_period=stats_period,
             issue_query=query,

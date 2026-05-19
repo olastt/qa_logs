@@ -6,12 +6,22 @@ comparisons:
     test_slug: vetmanager-extjs-test
     stage_slug: vetmanager-extjs-stage
 
-# Сводка по одному проекту (без test↔stage): qa-release-bot summary
+# Сводка по одному проекту (без test↔stage): qa-bot summary {id}
 summaries:
   - name: webapps-widgets-test
     instance: selectel
     project_slug: webappswidgets-test
     label: "webapps(widgets)-test"
+
+# Короткие имена для CLI (qa-bot summary webapps-widgets)
+cli_aliases:
+  webapps-widgets: webapps-widgets-test
+
+# Доп. проекты (добавьте slug в Glitchtip при необходимости)
+cli_projects:
+  vetmanager-laravel:
+    kind: summary
+    summary_name: vetmanager-laravel-test
 
 # stats_period передаётся в API Glitchtip (24h, 14d, …)
 stats_period: 14d

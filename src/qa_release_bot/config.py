@@ -99,6 +99,16 @@ def instance_credentials(settings: Settings, instance: str) -> tuple[str, str]:
     raise ValueError(f"Unknown instance: {instance}")
 
 
+def _resolve_summary_config_name(name: str, raw: dict[str, Any]) -> str:
+    aliases: dict[str, str] = dict(raw.get("cli_aliases") or {})
+    if name in aliases:
+        return aliases[name]
+    for config_name, cli_id in aliases.items():
+        if cli_id == name:
+            return config_name
+    return name
+
+
 def load_report_config(path: Path | None = None) -> dict[str, Any]:
     config_path = path or Path(__file__).resolve().parents[2] / "config" / "report.yaml"
     with config_path.open(encoding="utf-8") as f:
@@ -186,8 +196,9 @@ def build_summary_ref(
         }
 
     if name:
+        resolved = _resolve_summary_config_name(name, raw)
         for r in refs:
-            if r["name"] == name:
+            if r["name"] == resolved:
                 return r
         raise ValueError(f"Сводка '{name}' не найдена в config/report.yaml → summaries")
 
