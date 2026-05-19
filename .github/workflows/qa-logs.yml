@@ -1,0 +1,163 @@
+name: QA Logs (Glitchtip)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Команда qa-release-bot"
+        required: true
+        default: report
+        type: choice
+        options:
+          - report
+          - summary
+          - run-once
+          - list-projects
+      summary_name:
+        description: "Проект для summary (config/report.yaml → summaries)"
+        required: true
+        default: webapps-widgets-test
+        type: choice
+        options:
+          - webapps-widgets-test
+      no_stack:
+        description: "Без enrich stack (быстрее, меньше 429)"
+        required: true
+        default: true
+        type: boolean
+      notify_bitrix:
+        description: "Отправить результат в Bitrix24"
+        required: true
+        default: true
+        type: boolean
+  schedule:
+  # Пн–Пт 07:00 UTC (10:00 МСК)
+    - cron: "0 7 * * 1-5"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PYTHONPATH: src
+
+jobs:
+  qa-release-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Force Node.js 24
+        run: echo "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Resolve command (schedule / push → report)
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "command=${{ github.event.inputs.command }}" >> $GITHUB_OUTPUT
+            echo "summary_name=${{ github.event.inputs.summary_name }}" >> $GITHUB_OUTPUT
+            echo "no_stack=${{ github.event.inputs.no_stack }}" >> $GITHUB_OUTPUT
+            echo "notify=${{ github.event.inputs.notify_bitrix }}" >> $GITHUB_OUTPUT
+          else
+            echo "command=report" >> $GITHUB_OUTPUT
+            echo "summary_name=webapps-widgets-test" >> $GITHUB_OUTPUT
+            echo "no_stack=true" >> $GITHUB_OUTPUT
+            echo "notify=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run qa-release-bot
+        id: run
+        env:
+          GLITCHTIP_HETZNER_URL: ${{ secrets.GLITCHTIP_HETZNER_URL }}
+          GLITCHTIP_HETZNER_TOKEN: ${{ secrets.GLITCHTIP_HETZNER_TOKEN }}
+          GLITCHTIP_SELECTEL_URL: ${{ secrets.GLITCHTIP_SELECTEL_URL }}
+          GLITCHTIP_SELECTEL_TOKEN: ${{ secrets.GLITCHTIP_SELECTEL_TOKEN }}
+          GLITCHTIP_ORG_SLUG: ${{ secrets.GLITCHTIP_ORG_SLUG }}
+          POLL_INTERVAL_SEC: "300"
+          STATE_DB_PATH: data/state.db
+        run: |
+          ARGS="--command ${{ steps.params.outputs.command }}"
+          ARGS="$ARGS --summary-name ${{ steps.params.outputs.summary_name }}"
+          if [ "${{ steps.params.outputs.no_stack }}" = "true" ]; then
+            ARGS="$ARGS --no-stack"
+          fi
+          python scripts/github_actions_runner.py $ARGS 2>&1 | tee run.log
+        continue-on-error: true
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-report-${{ steps.params.outputs.command }}-${{ github.run_number }}
+          path: |
+            reports/*.html
+            reports/*.md
+            reports/ci_message.txt
+            run.log
+          if-no-files-found: ignore
+
+      - name: Deploy HTML to Surge (optional)
+        if: always() && secrets.SURGE_QA_LOGS_DOMAIN != '' && secrets.SURGE_TOKEN != ''
+        continue-on-error: true
+        run: |
+          HTML=$(ls -t reports/*.html 2>/dev/null | head -1)
+          if [ -z "$HTML" ]; then
+            echo "No HTML report to deploy"
+            exit 0
+          fi
+          npm install -g surge@latest
+          mkdir -p surge-pub && cp "$HTML" surge-pub/index.html
+          DOMAIN="${{ secrets.SURGE_QA_LOGS_DOMAIN }}"
+          surge surge-pub "$DOMAIN" --token ${{ secrets.SURGE_TOKEN }}
+          echo "REPORT_URL=https://${DOMAIN}" >> $GITHUB_ENV
+
+      - name: Send Bitrix24 notification
+        if: always() && steps.params.outputs.notify == 'true'
+        continue-on-error: true
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+          BITRIX_CHAT_ID: ${{ secrets.BITRIX_CHAT_ID }}
+        run: |
+          python3 - <<'EOF'
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, "scripts")
+          from bitrix_notify import send_message
+
+          cmd = "${{ steps.params.outputs.command }}"
+          run_url = (
+              "${{ github.server_url }}/${{ github.repository }}"
+              f"/actions/runs/${{ github.run_id }}"
+          )
+          report_url = os.environ.get("REPORT_URL", "")
+
+          if Path("reports/ci_message.txt").is_file():
+              message = Path("reports/ci_message.txt").read_text(encoding="utf-8")
+          else:
+              log_tail = ""
+              if Path("run.log").is_file():
+                  log_tail = Path("run.log").read_text(encoding="utf-8")[-1500:]
+              message = (
+                  f"❌ QA Release Bot — сбой или пустой результат\n"
+                  f"Команда: {cmd}\n"
+                  f"Run: {run_url}\n"
+              )
+              if log_tail.strip():
+                  message += f"\n--- лог (хвост) ---\n{log_tail}"
+
+          message += f"\n\n🔗 Actions: {run_url}"
+          if report_url:
+              message += f"\n📊 HTML: {report_url}"
+
+          send_message(message)
+          EOF

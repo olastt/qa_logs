@@ -24,3 +24,32 @@ qa-release-bot poll
 ```
 
 Токены только в `.env`, не в репозитории.
+
+## GitHub Actions
+
+Вкладка **Actions → QA Logs (Glitchtip) → Run workflow** — ручной запуск с выбором команды.
+
+| Input | Описание |
+|--------|----------|
+| `report` | QA-отчёт vetmanager-extjs test + stage |
+| `summary` | Сводка по одному проекту (Selectel widgets) |
+| `run-once` | Один цикл опроса |
+| `list-projects` | Список проектов из config |
+
+По расписанию (пн–пт 10:00 МСК) автоматически запускается `report`.
+
+### Secrets (Settings → Secrets and variables → Actions)
+
+| Secret | Назначение |
+|--------|------------|
+| `GLITCHTIP_HETZNER_URL` | URL Hetzner Glitchtip |
+| `GLITCHTIP_HETZNER_TOKEN` | API token |
+| `GLITCHTIP_SELECTEL_URL` | URL Selectel Glitchtip |
+| `GLITCHTIP_SELECTEL_TOKEN` | API token |
+| `GLITCHTIP_ORG_SLUG` | `vetmanager` |
+| `BITRIX_WEBHOOK_URL` | Webhook Bitrix24 (без `/im.message.add`) |
+| `BITRIX_CHAT_ID` | ID чата |
+| `SURGE_TOKEN` | (опционально) публикация HTML |
+| `SURGE_QA_LOGS_DOMAIN` | (опционально) домен Surge |
+
+Артефакты: `reports/*.html`, markdown и лог run.
