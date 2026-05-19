@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
+from qa_release_bot.glitchtip_levels import level_sort_index
 from qa_release_bot.html_dates import REPORT_TZ, calendar_date_in_report_tz
 from qa_release_bot.issue_analysis import analyze_issue_full
 from qa_release_bot.issue_titles import IssueTitleRegistry
@@ -60,6 +61,13 @@ def find_new_issues_by_id(
     return sorted(items, key=lambda x: (order[x.severity], -x.issue.count))
 
 
+def _sort_new_today(items: list[NewIssueItem]) -> list[NewIssueItem]:
+    return sorted(
+        items,
+        key=lambda x: (level_sort_index(x.issue.level), -x.issue.count),
+    )
+
+
 def find_new_issues_first_seen_today(
     issues: list[IssueRecord],
     *,
@@ -96,13 +104,7 @@ def find_new_issues_first_seen_today(
                 deploy_hint=_today_hint(issue, today, last_deploy),
             )
         )
-    order = {
-        IssueSeverity.BLOCKER: 0,
-        IssueSeverity.HIGH: 1,
-        IssueSeverity.MEDIUM: 2,
-        IssueSeverity.LOW: 3,
-    }
-    return sorted(items, key=lambda x: (order[x.severity], -x.issue.count))
+    return _sort_new_today(items)
 
 
 def _today_hint(issue: IssueRecord, today: date, last_deploy: date | None) -> str:

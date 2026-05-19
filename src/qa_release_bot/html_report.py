@@ -19,6 +19,7 @@ from qa_release_bot.noise_groups import GroupedNoise
 from qa_release_bot.release_decision import ReleaseDecision
 from qa_release_bot.severity_rules import IssueSeverity, classify_severity
 from qa_release_bot.snapshot_store import SnapshotStore
+from qa_release_bot.glitchtip_levels import level_badge, level_display, total_in_sections
 from qa_release_bot.summary_report import SummaryReport
 from qa_release_bot.tuesday_diff import DiffRow
 
@@ -463,6 +464,7 @@ class HtmlPageContext:
     total_api: int | None = None
     show_diff: bool = True
     is_summary: bool = False
+    level_sections: list[tuple[str, list[IssueRecord]]] = field(default_factory=list)
     glitchtip_base_url: str = ""
     glitchtip_org_slug: str = ""
     glitchtip_project_id: str = ""
@@ -538,10 +540,11 @@ def build_summary_html_context(
         stats_period=report.stats_period,
         issue_query=report.issue_query,
         decision=report.decision,
-        blockers=report.blockers,
-        highs=report.highs,
-        mediums=report.mediums,
-        lows=report.lows,
+        blockers=[],
+        highs=[],
+        mediums=[],
+        lows=[],
+        level_sections=report.level_sections,
         new_issues=report.new_issues,
         is_first_run=report.is_first_run,
         noise_groups=report.noise_groups,
@@ -624,6 +627,11 @@ def _strip_md(text: str) -> str:
 
 def _all_issues(ctx: HtmlPageContext) -> list[tuple[IssueRecord, IssueSeverity]]:
     out: list[tuple[IssueRecord, IssueSeverity]] = []
+    if ctx.is_summary and ctx.level_sections:
+        for _level, issues in ctx.level_sections:
+            for issue in issues:
+                out.append((issue, classify_severity(issue)))
+        return out
     for issue in ctx.blockers:
         out.append((issue, IssueSeverity.BLOCKER))
     for issue in ctx.highs:
@@ -705,6 +713,15 @@ def _glitchtip_link_kwargs(ctx: HtmlPageContext) -> dict[str, str]:
 
 def _warm_registry(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> None:
     link = {**_glitchtip_link_kwargs(ctx), "summary_mode": ctx.is_summary}
+    if ctx.is_summary and ctx.level_sections:
+        for _level, issues in ctx.level_sections:
+            for issue in issues:
+                analyze_issue_full(
+                    issue, classify_severity(issue), registry=reg, **link
+                )
+        for item in ctx.new_issues:
+            analyze_issue_full(item.issue, item.severity, registry=reg, **link)
+        return
     for issue in ctx.blockers:
         analyze_issue_full(
             issue, IssueSeverity.BLOCKER, registry=reg, **link
@@ -796,8 +813,12 @@ def render_html(
     registry: IssueTitleRegistry | None = None,
 ) -> str:
     fetched = ctx.fetched_at.astimezone(timezone.utc)
-    total_product = len(ctx.blockers) + len(ctx.highs) + len(ctx.mediums) + len(ctx.lows)
-    max_count = _max_blocker_high_count(ctx)
+    total_product = (
+        total_in_sections(ctx.level_sections)
+        if ctx.is_summary
+        else len(ctx.blockers) + len(ctx.highs) + len(ctx.mediums) + len(ctx.lows)
+    )
+    max_count = _max_level_sections_count(ctx) if ctx.is_summary else _max_blocker_high_count(ctx)
     reg = registry or IssueTitleRegistry()
     _warm_registry(ctx, reg)
 
@@ -819,12 +840,20 @@ def render_html(
         "<body>",
         '<div class="wrap">',
         _header(ctx, fetched),
-        _metrics(ctx, total_product),
+        _metrics_by_level(ctx, total_product)
+        if ctx.is_summary
+        else _metrics(ctx, total_product),
         _verdict(ctx) if not ctx.is_summary else _summary_intro(ctx),
         _new_issues_section(ctx, reg),
         _charts_section(ctx, reg),
-        _blockers_high_section(ctx, max_count, reg),
-        _medium_low_section(ctx, reg),
+        *(
+            [_level_sections_summary(ctx, max_count, reg)]
+            if ctx.is_summary
+            else [
+                _blockers_high_section(ctx, max_count, reg),
+                _medium_low_section(ctx, reg),
+            ]
+        ),
         _diff_section(ctx),
         _noise_section(ctx),
         _module_map_section(ctx),
@@ -857,6 +886,53 @@ def _header(ctx: HtmlPageContext, fetched: datetime) -> str:
   </div>
   <span class="badge-period">{period_badge}</span>
 </header>"""
+
+
+def _max_level_sections_count(ctx: HtmlPageContext) -> int:
+    counts = [i.count for _, issues in ctx.level_sections for i in issues]
+    return max(counts) if counts else 1
+
+
+def _metrics_by_level(ctx: HtmlPageContext, total: int) -> str:
+    tiles: list[tuple[int, str, str, str]] = []
+    for level, issues in ctx.level_sections:
+        if not issues:
+            continue
+        lbl, _, color = level_badge(level)
+        tiles.append((len(issues), lbl, color, color))
+    tiles.append((total, "ВСЕГО", "#5b6af0", "#818cf8"))
+    cards = []
+    for num, lbl, stripe, color in tiles:
+        cards.append(
+            f'<div class="metric" style="--metric-stripe:{stripe};--metric-color:{color}">'
+            f'<p class="metric-num">{num}</p><p class="metric-lbl">{_esc(lbl)}</p></div>'
+        )
+    return f'<section class="metrics">{"".join(cards)}</section>'
+
+
+def _level_sections_summary(
+    ctx: HtmlPageContext, max_count: int, reg: IssueTitleRegistry
+) -> str:
+    if not ctx.level_sections:
+        return """<section class="section">
+  <h2 class="section-title">Логи по Level</h2>
+  <p class="stub-card">Нет логов в выборке.</p>
+</section>"""
+    parts: list[str] = []
+    for level, issues in ctx.level_sections:
+        if not issues:
+            continue
+        title = level_display(level)
+        body = "".join(
+            _issue_card_html(issue, classify_severity(issue), max_count, ctx, reg)
+            for issue in issues
+        )
+        parts.append(
+            f'<section class="section">'
+            f'<h2 class="section-title">{_esc(title)} ({len(issues)})</h2>'
+            f"{body}</section>"
+        )
+    return "".join(parts)
 
 
 def _metrics(ctx: HtmlPageContext, total: int) -> str:
@@ -1024,7 +1100,10 @@ def _issue_card_html(
     reg: IssueTitleRegistry,
 ) -> str:
     analysis = _analyze(issue, sev, ctx, reg)
-    label, tone, color = _SEV[sev]
+    if ctx.is_summary:
+        label, tone, color = level_badge(issue.level)
+    else:
+        label, tone, color = _SEV[sev]
     stale_cls = " stale-card" if analysis.is_stale else ""
     stripe = "var(--muted)" if analysis.is_stale else color
     stale_badge = '<span class="stale-badge">УСТАРЕЛО</span>' if analysis.is_stale else ""
@@ -1257,14 +1336,19 @@ def _footer(ctx: HtmlPageContext, fetched: datetime) -> str:
 
 
 def _charts_js(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
-    sev_labels = ["BLOCKER", "HIGH", "MEDIUM", "LOW"]
-    sev_values = [
-        len(ctx.blockers),
-        len(ctx.highs),
-        len(ctx.mediums),
-        len(ctx.lows),
-    ]
-    sev_colors = ["#f96b6b", "#f5a623", "#a78bfa", "#3ecf8e"]
+    if ctx.is_summary and ctx.level_sections:
+        sev_labels = [level_display(level) for level, issues in ctx.level_sections if issues]
+        sev_values = [len(issues) for _, issues in ctx.level_sections if issues]
+        sev_colors = [level_badge(level)[2] for level, issues in ctx.level_sections if issues]
+    else:
+        sev_labels = ["BLOCKER", "HIGH", "MEDIUM", "LOW"]
+        sev_values = [
+            len(ctx.blockers),
+            len(ctx.highs),
+            len(ctx.mediums),
+            len(ctx.lows),
+        ]
+        sev_colors = ["#f96b6b", "#f5a623", "#a78bfa", "#3ecf8e"]
     top_labels, top_values, top_colors = _top10_chart_data(ctx, reg)
 
     tooltip = {

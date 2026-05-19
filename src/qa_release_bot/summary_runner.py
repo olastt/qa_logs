@@ -20,9 +20,9 @@ from qa_release_bot.config import (
 )
 from qa_release_bot.new_issues import NewIssueItem, find_new_issues_first_seen_today
 from qa_release_bot.noise_groups import group_noise_issues
-from qa_release_bot.release_decision import decide_summary, split_by_severity
+from qa_release_bot.glitchtip_levels import split_by_glitchtip_level
+from qa_release_bot.release_decision import decide_summary_by_level
 from qa_release_bot.issue_record import IssueRecord
-from qa_release_bot.severity_rules import IssueSeverity
 from qa_release_bot.snapshot_store import SnapshotStore
 from qa_release_bot.html_report import (
     default_summary_html_path,
@@ -152,11 +152,8 @@ class SingleProjectSummaryRunner:
         self._snapshots.save(snap_env, raw)
 
         deduped, noise_groups = group_noise_issues(raw)
-        by_sev = split_by_severity(deduped)
-        decision = decide_summary(
-            by_sev[IssueSeverity.BLOCKER],
-            by_sev[IssueSeverity.HIGH],
-        )
+        level_sections = split_by_glitchtip_level(deduped)
+        decision = decide_summary_by_level(level_sections)
         summary = SummaryReport(
             product_name=ref["name"],
             instance=ref["instance"],
@@ -165,10 +162,7 @@ class SingleProjectSummaryRunner:
             fetched_at=fetched_at,
             decision=decision,
             total_unresolved=len(raw),
-            blockers=by_sev[IssueSeverity.BLOCKER][:max_detail],
-            highs=by_sev[IssueSeverity.HIGH][:max_detail],
-            mediums=by_sev[IssueSeverity.MEDIUM],
-            lows=by_sev[IssueSeverity.LOW],
+            level_sections=level_sections,
             noise_groups=noise_groups,
             new_issues=new_items,
             disappeared_count=disappeared_count,

@@ -7,6 +7,7 @@ from qa_release_bot.issue_analysis import analyze_issue_full, format_analysis_bl
 from qa_release_bot.issue_record import IssueRecord
 from qa_release_bot.new_issues import NewIssueItem
 from qa_release_bot.noise_groups import GroupedNoise
+from qa_release_bot.glitchtip_levels import level_display, total_in_sections
 from qa_release_bot.release_decision import ReleaseDecision
 from qa_release_bot.severity_rules import IssueSeverity, classify_severity
 from qa_release_bot.tuesday_diff import is_stale
@@ -23,6 +24,7 @@ class SummaryReport:
     decision: ReleaseDecision
     total_unresolved: int
     project_id: str = ""
+    level_sections: list[tuple[str, list[IssueRecord]]] = field(default_factory=list)
     blockers: list[IssueRecord] = field(default_factory=list)
     highs: list[IssueRecord] = field(default_factory=list)
     mediums: list[IssueRecord] = field(default_factory=list)
@@ -52,13 +54,7 @@ def render_summary_markdown(report: SummaryReport) -> str:
     lines.append("")
     lines.extend(_render_decision(report))
     lines.append("")
-    lines.append(f"## 🔴 Блокеры ({len(report.blockers)})")
-    lines.extend(_render_issues(report.blockers))
-    lines.append("")
-    lines.append(f"## 🟠 High ({len(report.highs)})")
-    lines.extend(_render_issues(report.highs))
-    lines.append("")
-    lines.extend(_render_medium_low(report))
+    lines.extend(_render_level_sections(report))
     if report.noise_groups:
         lines.append("")
         lines.append("## 🗑️ Шум (сгруппировано)")
@@ -98,14 +94,29 @@ def _render_new_issues(report: SummaryReport) -> list[str]:
 
 
 def _render_totals(report: SummaryReport) -> list[str]:
-    product = len(report.blockers) + len(report.highs) + len(report.mediums) + len(report.lows)
+    product = total_in_sections(report.level_sections)
+    level_bits = " · ".join(
+        f"**{level_display(level)}** {len(issues)}"
+        for level, issues in report.level_sections
+        if issues
+    )
     return [
         "## 📊 Итого",
         f"- Нерешённых в API: **{report.total_unresolved}**",
-        f"- После отсечения шума: **{product}** "
-        f"(🔴 {len(report.blockers)} · 🟠 {len(report.highs)} · "
-        f"🟡 {len(report.mediums)} · 🟢 {len(report.lows)})",
+        f"- После отсечения шума: **{product}**",
+        f"- По Level: {level_bits or '—'}",
     ]
+
+
+def _render_level_sections(report: SummaryReport) -> list[str]:
+    lines: list[str] = []
+    for level, issues in report.level_sections:
+        lines.append(f"## {level_display(level)} ({len(issues)})")
+        lines.extend(_render_issues(issues))
+        lines.append("")
+    if not report.level_sections:
+        lines.append("_Нет логов в выборке._")
+    return lines
 
 
 def _render_decision(report: SummaryReport) -> list[str]:
@@ -129,17 +140,3 @@ def _render_issues(issues: list[IssueRecord]) -> list[str]:
     return out
 
 
-def _render_medium_low(report: SummaryReport) -> list[str]:
-    lines = [
-        "## 🟡 Medium / 🟢 Low",
-        f"_Medium: {len(report.mediums)} | Low: {len(report.lows)} — кратко._",
-    ]
-    for issue in (report.mediums + report.lows)[:30]:
-        sev = classify_severity(issue)
-        analysis = analyze_issue_full(issue, sev)
-        tag = "🕰️ " if is_stale(issue) else ""
-        lines.append(f"- {tag}{analysis.tracker_title} (count={issue.count})")
-    rest = len(report.mediums) + len(report.lows) - min(30, len(report.mediums) + len(report.lows))
-    if rest > 0:
-        lines.append(f"_… ещё {rest}_")
-    return lines

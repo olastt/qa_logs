@@ -25,6 +25,7 @@ from qa_release_bot.analyst_pdf import (
     new_issues_flow,
 )
 from qa_release_bot.pdf_fonts import ensure_pdf_font, ensure_pdf_font_bold
+from qa_release_bot.glitchtip_levels import level_display, total_in_sections
 from qa_release_bot.summary_report import SummaryReport
 
 
@@ -78,26 +79,22 @@ def write_summary_pdf(report: SummaryReport, path: Path) -> PdfBuildResult:
         story.extend(new_block)
         story.append(PageBreak())
 
-    bh = blockers_high_flow(
-        report.blockers,
-        report.highs,
-        styles,
-        w,
-        empty_message="Нет blocker/high.",
-    )
-    if bh:
-        story.extend(bh)
-        story.append(PageBreak())
+    for level, issues in report.level_sections:
+        if not issues:
+            continue
+        from qa_release_bot.glitchtip_levels import level_display
 
-    ml = medium_low_table_flow(
-        report.mediums,
-        report.lows,
-        env_label="test",
-        styles=styles,
-        width=w,
-    )
-    if ml:
-        story.extend(ml)
+        story.append(Paragraph(f"{level_display(level)} ({len(issues)})", styles["section"]))
+        bh = blockers_high_flow(
+            issues,
+            [],
+            styles,
+            w,
+            empty_message="",
+        )
+        if bh:
+            story.extend(bh)
+        story.append(PageBreak())
 
     noise = _noise_section(report, styles, w)
     if noise:
@@ -109,10 +106,14 @@ def write_summary_pdf(report: SummaryReport, path: Path) -> PdfBuildResult:
     return PdfBuildResult(
         path=path,
         page_count=page_num["n"],
-        blockers=len(report.blockers),
-        highs=len(report.highs),
-        mediums=len(report.mediums),
-        lows=len(report.lows),
+        blockers=sum(len(i) for lvl, i in report.level_sections if lvl in ("fatal", "critical")),
+        highs=sum(len(i) for lvl, i in report.level_sections if lvl == "error"),
+        mediums=sum(len(i) for lvl, i in report.level_sections if lvl == "warning"),
+        lows=sum(
+            len(i)
+            for lvl, i in report.level_sections
+            if lvl not in ("fatal", "critical", "error", "warning")
+        ),
     )
 
 
@@ -156,20 +157,16 @@ def _cover(report: SummaryReport, styles: dict, width: float, meta: dict) -> lis
         ])
     )
 
+    tile_sections = [(lvl, iss) for lvl, iss in report.level_sections if iss][:4]
+    while len(tile_sections) < 4:
+        tile_sections.append(("", []))
     tw = width / 4
     tiles = Table(
         [
+            [Paragraph(str(len(iss)), styles["tile_num"]) for _, iss in tile_sections],
             [
-                Paragraph(str(len(report.blockers)), styles["tile_num"]),
-                Paragraph(str(len(report.highs)), styles["tile_num"]),
-                Paragraph(str(len(report.mediums)), styles["tile_num"]),
-                Paragraph(str(len(report.lows)), styles["tile_num"]),
-            ],
-            [
-                Paragraph("BLOCKER", styles["tile_lbl"]),
-                Paragraph("HIGH", styles["tile_lbl"]),
-                Paragraph("MEDIUM", styles["tile_lbl"]),
-                Paragraph("LOW", styles["tile_lbl"]),
+                Paragraph(level_display(lvl) if lvl else "—", styles["tile_lbl"])
+                for lvl, _ in tile_sections
             ],
         ],
         colWidths=[tw] * 4,
@@ -183,7 +180,7 @@ def _cover(report: SummaryReport, styles: dict, width: float, meta: dict) -> lis
         ])
     )
 
-    product = len(report.blockers) + len(report.highs) + len(report.mediums) + len(report.lows)
+    product = total_in_sections(report.level_sections)
     footer_parts: list = [
         Paragraph(
             f"API: {report.total_unresolved} нерешённых · "

@@ -34,6 +34,25 @@ def decide_summary(
     )
 
 
+def decide_summary_by_level(
+    level_sections: list[tuple[str, list[IssueRecord]]],
+) -> ReleaseDecision:
+    """Сводка: итог по полю Level из Glitchtip."""
+    from qa_release_bot.glitchtip_levels import level_display
+
+    parts = [
+        f"{level_display(level)}: {len(issues)}"
+        for level, issues in level_sections
+        if issues
+    ]
+    items = [" · ".join(parts)] if parts else ["Нерешённых логов в выборке нет."]
+    return ReleaseDecision(
+        verdict="ok",
+        headline="📋 **Сводка по логам**",
+        items=items,
+    )
+
+
 def decide_release(
     blockers: list[IssueRecord],
     highs: list[IssueRecord],

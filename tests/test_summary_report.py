@@ -25,7 +25,7 @@ def test_render_summary_markdown_no_diff_sections():
         fetched_at=now,
         decision=ReleaseDecision(verdict="ok", headline="✅ Критичных нет", items=[]),
         total_unresolved=1,
-        highs=[issue],
+        level_sections=[("error", [issue])],
         is_first_run=True,
     )
     md = render_summary_markdown(report)
@@ -50,15 +50,20 @@ def test_write_summary_pdf(tmp_path):
         fetched_at=now,
         decision=ReleaseDecision(verdict="ok", headline="✅ Критичных нет", items=[]),
         total_unresolved=5,
-        mediums=[
-            IssueRecord(
-                id="2",
-                title="Warning in widget",
-                level="warning",
-                count=3,
-                last_seen=now,
-                first_seen=now,
-                culprit="",
+        level_sections=[
+            (
+                "warning",
+                [
+                    IssueRecord(
+                        id="2",
+                        title="Warning in widget",
+                        level="warning",
+                        count=3,
+                        last_seen=now,
+                        first_seen=now,
+                        culprit="",
+                    )
+                ],
             )
         ],
     )
