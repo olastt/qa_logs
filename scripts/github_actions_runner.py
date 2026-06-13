@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Запуск qa-bot в GitHub Actions."""
+"""Run qa-bot in GitHub Actions."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from qa_release_bot.projects import (  # noqa: E402
 )
 from qa_release_bot.run_facade import (  # noqa: E402
     append_ci_message,
-    notify_with_url,
     run_release,
     run_summary,
 )
@@ -28,6 +27,22 @@ from qa_release_bot.run_facade import (  # noqa: E402
 
 def _projects_for_command(command: str) -> list[str]:
     return [p.id for p in list_cli_projects() if p.kind == command]
+
+
+def _requested_projects(command: str, raw_project: str) -> list[str]:
+    raw = raw_project.strip()
+    if raw.upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
+        project_ids = _projects_for_command(command)
+        if not project_ids:
+            raise ValueError(f"No projects for command {command!r}")
+        return project_ids
+
+    project_ids = [p.strip() for p in raw.split(",") if p.strip()]
+    if not project_ids:
+        raise ValueError("No project specified")
+    for pid in project_ids:
+        validate_command_project(command, pid)
+    return project_ids
 
 
 def _run_one(command: str, project_id: str, *, no_stack: bool) -> str:
@@ -54,7 +69,7 @@ def _run_one(command: str, project_id: str, *, no_stack: bool) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["release", "summary"])
-    parser.add_argument("project", help="ID проекта или «ВСЕ ПРОЕКТЫ»")
+    parser.add_argument("project", help="Project ID, comma-separated project IDs, or ALL")
     parser.add_argument("--no-stack", action="store_true", default=True)
     args = parser.parse_args()
 
@@ -62,13 +77,7 @@ def main() -> None:
     out_dir = Path(report_output_dir(cfg))
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.project.strip().upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
-        project_ids = _projects_for_command(args.command)
-        if not project_ids:
-            raise ValueError(f"Нет проектов для команды «{args.command}»")
-    else:
-        project_ids = [args.project.strip()]
-        validate_command_project(args.command, project_ids[0])
+    project_ids = _requested_projects(args.command, args.project)
 
     messages: list[str] = []
     failed = False
@@ -85,7 +94,6 @@ def main() -> None:
 
     append_ci_message(out_dir, messages)
 
-    # Список доменов Surge для workflow
     surge_jobs: list[dict[str, str]] = []
     for pid in project_ids:
         meta_path = out_dir / f"ci_meta_{pid}.json"

@@ -51,7 +51,7 @@ on:
         default: true
         type: boolean
   schedule:
-    - cron: "0 7 * * 1-5"
+    - cron: "0 7 * * *"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -94,14 +94,17 @@ jobs:
             PROJECT="${{ github.event.inputs.project }}"
             NOTIFY="${{ github.event.inputs.notify_bitrix }}"
           else
-            ACTION="🚦 Проверить релиз"
-            PROJECT="vetmanager-extjs"
+            PROJECT="hetzner-webappswidgets-test,hetzner-flutter-doctor-app-test,hetzner-vetmanager-extjs-test,hetzner-vetmanager-extjs-stage"
+            ACTION="summary"
             NOTIFY="true"
           fi
 
           if [[ "$ACTION" == *"Проверить релиз"* ]]; then
             CMD="release"
           else
+            CMD="summary"
+          fi
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             CMD="summary"
           fi
 
@@ -124,7 +127,10 @@ jobs:
         run: |
           python -c "
           from qa_release_bot.projects import validate_command_project
-          validate_command_project('${{ steps.params.outputs.command }}', '${{ steps.params.outputs.project }}')
+          command = '${{ steps.params.outputs.command }}'
+          projects = '${{ steps.params.outputs.project }}'
+          for project in [p.strip() for p in projects.split(',') if p.strip()]:
+              validate_command_project(command, project)
           "
 
       - name: Run qa-bot
@@ -263,6 +269,14 @@ jobs:
 
           sys.path.insert(0, "scripts")
           from bitrix_notify import send_message
+
+          message_files = sorted(Path("reports").glob("ci_message_*.txt"))
+          if message_files:
+              for path in message_files:
+                  message = path.read_text(encoding="utf-8").strip()
+                  if message:
+                      send_message(message)
+              sys.exit(0)
 
           if Path("reports/ci_message.txt").is_file():
               message = Path("reports/ci_message.txt").read_text(encoding="utf-8").strip()
