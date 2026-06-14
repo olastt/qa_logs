@@ -8,6 +8,7 @@ from pathlib import Path
 from qa_release_bot.bot import QAReleaseBot
 from qa_release_bot.config import Settings, build_project_refs, load_report_config, report_output_dir
 from qa_release_bot.logging_setup import configure_logging
+from qa_release_bot.new_issue_watch import format_new_issue_watch_notify, watch_new_issues
 from qa_release_bot.projects import ALL_PROJECTS_LABEL, list_cli_projects
 from qa_release_bot.run_facade import (
     append_ci_message,
@@ -110,6 +111,15 @@ def main() -> None:
     summary_p.add_argument("project", help="ID проекта или «ВСЕ ПРОЕКТЫ»")
     _add_common_flags(summary_p)
 
+    new_issues_p = sub.add_parser(
+        "new-issues",
+        help="Check summary projects for absolutely new Glitchtip issues",
+    )
+    new_issues_p.add_argument("project", help="Project ID, comma-separated IDs, or ALL")
+    new_issues_p.add_argument("--state-db", type=Path, default=None)
+    new_issues_p.add_argument("--notify", action="store_true")
+    new_issues_p.add_argument("-v", "--verbose", action="store_true")
+
     sub.add_parser("projects", help="Список доступных проектов")
 
     # Скрытые команды для совместимости
@@ -183,6 +193,19 @@ def main() -> None:
             if msg.is_file():
                 _maybe_bitrix([msg.read_text(encoding="utf-8")])
         sys.exit(code)
+
+    if args.command == "new-issues":
+        raw = args.project.strip()
+        if raw.upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
+            ids = [p.id for p in list_cli_projects() if p.kind == "summary"]
+        else:
+            ids = [p.strip() for p in raw.split(",") if p.strip()]
+        result = watch_new_issues(settings, ids, state_db_path=args.state_db)
+        text = format_new_issue_watch_notify(result)
+        print(text)
+        if args.notify and result.alerts:
+            _maybe_bitrix([text])
+        return
 
     if args.command == "report":
         from datetime import datetime, timezone

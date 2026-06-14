@@ -1,5 +1,9 @@
 name: QA Logs (Glitchtip)
 
+concurrency:
+  group: qa-logs-${{ github.event_name == 'schedule' && github.event.schedule || github.run_id }}
+  cancel-in-progress: false
+
 on:
   push:
     branches: [main]
@@ -52,10 +56,12 @@ on:
         type: boolean
   schedule:
     - cron: "0 7 * * 1-5"
+    - cron: "*/10 * * * *"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PYTHONPATH: src
+  CRON_SUMMARY_PROJECTS: hetzner-webappswidgets-test,hetzner-flutter-doctor-app-test,hetzner-vetmanager-extjs-test,hetzner-vetmanager-extjs-stage
 
 jobs:
   qa-release-bot:
@@ -93,8 +99,12 @@ jobs:
             ACTION="${{ github.event.inputs.action }}"
             PROJECT="${{ github.event.inputs.project }}"
             NOTIFY="${{ github.event.inputs.notify_bitrix }}"
+          elif [ "${{ github.event.schedule }}" = "*/10 * * * *" ]; then
+            PROJECT="${CRON_SUMMARY_PROJECTS}"
+            ACTION="new-issues"
+            NOTIFY="true"
           else
-            PROJECT="hetzner-webappswidgets-test,hetzner-flutter-doctor-app-test,hetzner-vetmanager-extjs-test,hetzner-vetmanager-extjs-stage"
+            PROJECT="${CRON_SUMMARY_PROJECTS}"
             ACTION="summary"
             NOTIFY="true"
           fi
@@ -104,7 +114,10 @@ jobs:
           else
             CMD="summary"
           fi
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          if [ "$ACTION" = "new-issues" ]; then
+            CMD="new-issues"
+          fi
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "$ACTION" != "new-issues" ]; then
             CMD="summary"
           fi
 
@@ -118,7 +131,11 @@ jobs:
           echo "project=$PROJECT" >> $GITHUB_OUTPUT
           echo "all=$ALL_PROJECTS" >> $GITHUB_OUTPUT
           echo "notify=$NOTIFY" >> $GITHUB_OUTPUT
-          echo "needs_surge=true" >> $GITHUB_OUTPUT
+          if [ "$CMD" = "new-issues" ]; then
+            echo "needs_surge=false" >> $GITHUB_OUTPUT
+          else
+            echo "needs_surge=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Validate action and project
         if: steps.params.outputs.all != 'true'
@@ -128,10 +145,20 @@ jobs:
           python -c "
           from qa_release_bot.projects import validate_command_project
           command = '${{ steps.params.outputs.command }}'
+          validate_as = 'summary' if command == 'new-issues' else command
           projects = '${{ steps.params.outputs.project }}'
           for project in [p.strip() for p in projects.split(',') if p.strip()]:
-              validate_command_project(command, project)
+              validate_command_project(validate_as, project)
           "
+
+      - name: Restore new issue watcher state
+        if: steps.params.outputs.command == 'new-issues'
+        uses: actions/cache/restore@v4
+        with:
+          path: data/new-issue-watch.db
+          key: qa-new-issue-watch-${{ github.run_id }}
+          restore-keys: |
+            qa-new-issue-watch-
 
       - name: Run qa-bot
         id: run
@@ -154,10 +181,21 @@ jobs:
             export GLITCHTIP_ORG_SLUG=vetmanager
           fi
           set -o pipefail
+          EXTRA_ARGS=()
+          if [ "${{ steps.params.outputs.command }}" = "new-issues" ]; then
+            EXTRA_ARGS=(--state-db data/new-issue-watch.db)
+          fi
           python scripts/github_actions_runner.py \
             "${{ steps.params.outputs.command }}" \
             "${{ steps.params.outputs.project }}" \
-            --no-stack 2>&1 | tee run.log
+            --no-stack "${EXTRA_ARGS[@]}" 2>&1 | tee run.log
+
+      - name: Save new issue watcher state
+        if: always() && steps.params.outputs.command == 'new-issues'
+        uses: actions/cache/save@v4
+        with:
+          path: data/new-issue-watch.db
+          key: qa-new-issue-watch-${{ github.run_id }}
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4

@@ -96,6 +96,43 @@ h1, h2, h3, .font-display { font-family: 'Unbounded', sans-serif; font-weight: 7
   color: var(--muted);
   font-size: 14px;
 }
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+@media (max-width: 960px) {
+  .action-grid { grid-template-columns: 1fr; }
+}
+.action-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  min-height: 148px;
+  border-top: 2px solid var(--action-color, var(--accent));
+}
+.action-card h3 {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.action-answer {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 18px;
+  line-height: 1.25;
+  color: var(--action-color, var(--text));
+  margin-bottom: 10px;
+}
+.action-detail {
+  color: var(--muted);
+  font-size: 13px;
+}
+.action-list {
+  list-style: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+.action-list li { margin-top: 6px; }
 .header {
   display: flex;
   flex-wrap: wrap;
@@ -853,9 +890,9 @@ def render_html(
         _metrics_by_level(ctx, total_product)
         if ctx.is_summary
         else _metrics(ctx, total_product),
-        _verdict(ctx) if not ctx.is_summary else _summary_intro(ctx),
-        _new_issues_section(ctx, reg),
+        _summary_action_overview(ctx, reg) if ctx.is_summary else _verdict(ctx),
         _charts_section(ctx, reg),
+        _new_issues_section(ctx, reg),
         *(
             [_level_sections_summary(ctx, max_count, reg)]
             if ctx.is_summary
@@ -980,6 +1017,106 @@ def _metrics(ctx: HtmlPageContext, total: int) -> str:
             f'<p class="metric-num">{num}</p><p class="metric-lbl">{_esc(lbl)}</p></div>'
         )
     return f'<section class="metrics">{"".join(cards)}</section>'
+
+
+def _summary_action_overview(ctx: HtmlPageContext, reg: IssueTitleRegistry) -> str:
+    new_critical = [
+        item
+        for item in ctx.new_issues
+        if item.severity in (IssueSeverity.BLOCKER, IssueSeverity.HIGH)
+    ]
+    action_candidates = _summary_action_candidates(ctx)
+
+    critical_color = "#f96b6b" if new_critical else "#3ecf8e"
+    critical_answer = (
+        f"Да, {len(new_critical)}"
+        if new_critical
+        else "Нет"
+    )
+    critical_detail = (
+        "Новые BLOCKER/HIGH за сегодня."
+        if new_critical
+        else "Новых BLOCKER/HIGH за сегодня не найдено."
+    )
+
+    if ctx.new_issues:
+        today_answer = f"{len(ctx.new_issues)} новых"
+        today_lines = "".join(
+            f"<li>{_esc(_short_action_title(item.tracker_title))}</li>"
+            for item in ctx.new_issues[:3]
+        )
+        if len(ctx.new_issues) > 3:
+            today_lines += f"<li>...и еще {len(ctx.new_issues) - 3}</li>"
+        today_body = f'<ul class="action-list">{today_lines}</ul>'
+    else:
+        today_answer = "Ничего нового"
+        today_body = '<p class="action-detail">Новых логов за сегодня нет.</p>'
+
+    if new_critical:
+        action_answer = "Разобрать новые критичные"
+        action_color = "#f96b6b"
+        action_items = [
+            _short_action_title(item.tracker_title)
+            for item in new_critical[:3]
+        ]
+    elif action_candidates:
+        action_answer = "Проверить частые ошибки"
+        action_color = "#f5a623"
+        action_items = [
+            f"{_short_action_title(_issue_action_title(issue, ctx, reg))} · x{issue.count}"
+            for issue in action_candidates[:3]
+        ]
+    else:
+        action_answer = "Срочных действий нет"
+        action_color = "#3ecf8e"
+        action_items = ["Можно смотреть отчет как фоновую сводку."]
+    action_body = "".join(f"<li>{_esc(item)}</li>" for item in action_items)
+
+    return f"""<section class="section">
+  <h2 class="section-title">Главное</h2>
+  <div class="action-grid">
+    <article class="action-card" style="--action-color:{critical_color}">
+      <h3>Есть ли новые критичные ошибки?</h3>
+      <p class="action-answer">{_esc(critical_answer)}</p>
+      <p class="action-detail">{_esc(critical_detail)}</p>
+    </article>
+    <article class="action-card" style="--action-color:#818cf8">
+      <h3>Что появилось сегодня?</h3>
+      <p class="action-answer">{_esc(today_answer)}</p>
+      {today_body}
+    </article>
+    <article class="action-card" style="--action-color:{action_color}">
+      <h3>Что требует действия?</h3>
+      <p class="action-answer">{_esc(action_answer)}</p>
+      <ul class="action-list">{action_body}</ul>
+    </article>
+  </div>
+</section>"""
+
+
+def _summary_action_candidates(ctx: HtmlPageContext) -> list[IssueRecord]:
+    issues = [issue for issue, _ in _all_issues(ctx)]
+    important = [
+        issue
+        for issue in issues
+        if classify_severity(issue) in (IssueSeverity.BLOCKER, IssueSeverity.HIGH)
+    ]
+    return sorted(important, key=lambda issue: issue.count, reverse=True)
+
+
+def _issue_action_title(
+    issue: IssueRecord,
+    ctx: HtmlPageContext,
+    reg: IssueTitleRegistry,
+) -> str:
+    return _analyze(issue, classify_severity(issue), ctx, reg).tracker_title
+
+
+def _short_action_title(value: str, max_len: int = 72) -> str:
+    value = " ".join(value.split())
+    if len(value) <= max_len:
+        return value
+    return value[: max_len - 3].rstrip() + "..."
 
 
 def _summary_intro(ctx: HtmlPageContext) -> str:

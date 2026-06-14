@@ -21,7 +21,10 @@ def test_summary_html_no_release_verdict_or_diff():
     html = render_html(ctx)
     assert "РЕЛИЗ ЗАПРЕЩЁН" not in html
     assert "РЕЛИЗ ОК" not in html
-    assert "Сводка по логам" in html
+    assert "Главное" in html
+    assert "Есть ли новые критичные ошибки?" in html
+    assert "Что появилось сегодня?" in html
+    assert "Что требует действия?" in html
     assert "Дифф test↔stage" not in html
     assert "Динамика" not in html
     assert "Топ-10 по кол-ву" in html

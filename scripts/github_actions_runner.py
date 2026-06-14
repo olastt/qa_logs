@@ -12,6 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from qa_release_bot.config import Settings, load_report_config, report_output_dir  # noqa: E402
+from qa_release_bot.new_issue_watch import (  # noqa: E402
+    format_new_issue_watch_notify,
+    watch_new_issues,
+)
 from qa_release_bot.notify_format import format_failure_notify  # noqa: E402
 from qa_release_bot.projects import (  # noqa: E402
     ALL_PROJECTS_LABEL,
@@ -26,10 +30,13 @@ from qa_release_bot.run_facade import (  # noqa: E402
 
 
 def _projects_for_command(command: str) -> list[str]:
+    if command == "new-issues":
+        command = "summary"
     return [p.id for p in list_cli_projects() if p.kind == command]
 
 
 def _requested_projects(command: str, raw_project: str) -> list[str]:
+    validate_as = "summary" if command == "new-issues" else command
     raw = raw_project.strip()
     if raw.upper() in (ALL_PROJECTS_LABEL, "ALL", "*"):
         project_ids = _projects_for_command(command)
@@ -41,7 +48,7 @@ def _requested_projects(command: str, raw_project: str) -> list[str]:
     if not project_ids:
         raise ValueError("No project specified")
     for pid in project_ids:
-        validate_command_project(command, pid)
+        validate_command_project(validate_as, pid)
     return project_ids
 
 
@@ -68,9 +75,10 @@ def _run_one(command: str, project_id: str, *, no_stack: bool) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["release", "summary"])
+    parser.add_argument("command", choices=["release", "summary", "new-issues"])
     parser.add_argument("project", help="Project ID, comma-separated project IDs, or ALL")
     parser.add_argument("--no-stack", action="store_true", default=True)
+    parser.add_argument("--state-db", type=Path, default=None)
     args = parser.parse_args()
 
     cfg = load_report_config()
@@ -78,6 +86,24 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     project_ids = _requested_projects(args.command, args.project)
+
+    if args.command == "new-issues":
+        try:
+            result = watch_new_issues(Settings(), project_ids, state_db_path=args.state_db)
+            text = format_new_issue_watch_notify(result)
+            messages = [text] if result.alerts else []
+            if messages:
+                append_ci_message(out_dir, messages)
+            else:
+                (out_dir / "ci_message.txt").write_text("", encoding="utf-8")
+            print(text)
+        except Exception as exc:
+            text = format_failure_notify("new-issues", args.command, str(exc))
+            append_ci_message(out_dir, [text])
+            print(text, file=sys.stderr)
+            sys.exit(1)
+        (out_dir / "ci_surge.json").write_text("[]", encoding="utf-8")
+        return
 
     messages: list[str] = []
     failed = False
