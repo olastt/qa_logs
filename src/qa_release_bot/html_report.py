@@ -520,8 +520,9 @@ def default_analyst_html_path(output_dir: Path, fetched_at: datetime) -> Path:
 
 def default_summary_html_path(output_dir: Path, report: SummaryReport) -> Path:
     day = report.fetched_at.astimezone(timezone.utc).strftime("%Y-%m-%d")
+    instance = report.instance.replace("/", "-")
     slug = report.project_slug.replace("/", "-")
-    return output_dir / f"summary_{slug}_{day}.html"
+    return output_dir / f"summary_{instance}_{slug}_{day}.html"
 
 
 def build_analyst_html_context(

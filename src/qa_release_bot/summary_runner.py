@@ -155,8 +155,9 @@ class SingleProjectSummaryRunner:
         level_sections = split_by_glitchtip_level(deduped)
         product_count = sum(len(issues) for _, issues in level_sections)
         decision = decide_summary_by_level(level_sections)
+        display_name = project.label or ref["name"]
         summary = SummaryReport(
-            product_name=ref["name"],
+            product_name=display_name,
             instance=ref["instance"],
             project_slug=project.slug,
             project_id=summary_project_id,

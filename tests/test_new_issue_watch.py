@@ -37,7 +37,11 @@ def test_new_issue_watch_baselines_first_run(monkeypatch, tmp_path):
             "project": type(
                 "Project",
                 (),
-                {"slug": "webappswidgets-test", "org_slug": "vetmanager"},
+                {
+                    "slug": "webappswidgets-test",
+                    "org_slug": "vetmanager",
+                    "label": None,
+                },
             )(),
         },
     )
@@ -86,7 +90,11 @@ def test_new_issue_watch_reports_only_after_baseline(monkeypatch, tmp_path):
             "project": type(
                 "Project",
                 (),
-                {"slug": "webappswidgets-test", "org_slug": "vetmanager"},
+                {
+                    "slug": "webappswidgets-test",
+                    "org_slug": "vetmanager",
+                    "label": "webapps(widgets)-review-feature-test",
+                },
             )(),
         },
     )
@@ -134,6 +142,6 @@ def test_new_issue_watch_reports_only_after_baseline(monkeypatch, tmp_path):
     assert "Brand new" in text
     assert "🆕 QA Bot: новые ошибки в Glitchtip — 1" in text
     assert "Проверено проектов: 1" in text
-    assert "Проект: [hetzner] hetzner-webappswidgets-test" in text
+    assert "Проект: [hetzner] webapps(widgets)-review-feature-test" in text
     assert "Первое появление в Glitchtip: 2026-06-14 13:00 МСК" in text
     assert "Обнаружено ботом:" in text

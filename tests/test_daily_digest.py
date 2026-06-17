@@ -15,6 +15,7 @@ def test_format_daily_digest_links_reports():
             {
                 "command": "summary",
                 "project_id": "hetzner-vetmanager-extjs-review",
+                "project_display_name": "vetmanager-extjs-review",
                 "new_issues": 2,
                 "new_critical": 1,
                 "disappeared": 0,
@@ -28,6 +29,6 @@ def test_format_daily_digest_links_reports():
     assert "Проверено проектов: 2" in text
     assert "Новых ошибок сегодня: 2" in text
     assert "Критичных новых: 1" in text
-    assert "hetzner-vetmanager-extjs-review: новых 2, критичных 1" in text
+    assert "vetmanager-extjs-review: новых 2, критичных 1" in text
     assert "https://qa-extjs-review.surge.sh" in text
     assert "selectel-webappswidgets-test" in text

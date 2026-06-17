@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-REPORT_TZ = ZoneInfo("Europe/Moscow")
+try:
+    REPORT_TZ = ZoneInfo("Europe/Moscow")
+except ZoneInfoNotFoundError:
+    REPORT_TZ = timezone(timedelta(hours=3))
 
 _MONTHS_RU = (
     "января",

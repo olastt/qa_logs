@@ -108,18 +108,23 @@ def run_summary(
 
     domain = surge_domain(project_id, "summary")
     report_url = f"https://{domain}"
+    display_name = summary.product_name or project_id
     notify = format_summary_notify(
-        project_id,
+        display_name,
         summary,
         disappeared_count=summary.disappeared_count,
         report_url=report_url,
     )
-    html_glob = f"summary_*{summary.project_slug.replace('/', '-')}*.html"
+    html_glob = (
+        f"summary_{summary.instance.replace('/', '-')}_"
+        f"{summary.project_slug.replace('/', '-')}*.html"
+    )
     html_path = _latest_html(out_dir, html_glob) or _latest_html(out_dir, "summary_*.html")
     _write_ci_meta(
         out_dir,
         project_id=project_id,
         command="summary",
+        project_display_name=display_name,
         surge_domain=domain,
         notify_text=notify,
         html_path=str(html_path) if html_path else "",

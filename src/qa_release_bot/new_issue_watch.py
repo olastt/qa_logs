@@ -68,7 +68,7 @@ def watch_new_issues(
                 alerts.append(
                     WatchedNewIssue(
                         instance=ref["instance"],
-                        project_name=ref["name"],
+                        project_name=project.label or ref["name"],
                         issue=issue,
                         glitchtip_base_url=base_url,
                     )

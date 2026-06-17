@@ -39,7 +39,11 @@ def test_unseen_issue_is_alerted_only_when_first_seen_today(monkeypatch, tmp_pat
             "project": type(
                 "Project",
                 (),
-                {"slug": "webappswidgets-test", "org_slug": "vetmanager"},
+                {
+                    "slug": "webappswidgets-test",
+                    "org_slug": "vetmanager",
+                    "label": "webapps(widgets)-review-feature-test",
+                },
             )(),
         },
     )

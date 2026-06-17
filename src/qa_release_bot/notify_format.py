@@ -80,9 +80,10 @@ def format_daily_digest(items: list[dict[str, Any]]) -> str:
             reverse=True,
         ):
             project_id = str(item.get("project_id") or "unknown")
+            project_name = str(item.get("project_display_name") or project_id)
             new_n = int(item.get("new_issues") or 0)
             critical_n = int(item.get("new_critical") or 0)
-            lines.append(f"- {project_id}: новых {new_n}, критичных {critical_n}")
+            lines.append(f"- {project_name}: новых {new_n}, критичных {critical_n}")
             for title in (item.get("top_new_titles") or [])[:2]:
                 lines.append(f"  • {_first_line(str(title), 120)}")
             url = str(item.get("report_url") or "")
@@ -96,7 +97,7 @@ def format_daily_digest(items: list[dict[str, Any]]) -> str:
         lines.append("")
         lines.append("✅ Без новых ошибок:")
         for item in quiet[:12]:
-            lines.append(f"- {item.get('project_id')}")
+            lines.append(f"- {item.get('project_display_name') or item.get('project_id')}")
         if len(quiet) > 12:
             lines.append(f"- ...и ещё {len(quiet) - 12}")
 
@@ -104,8 +105,9 @@ def format_daily_digest(items: list[dict[str, Any]]) -> str:
     lines.append("🔗 Все отчёты:")
     for item in summary_items:
         project_id = str(item.get("project_id") or "unknown")
+        project_name = str(item.get("project_display_name") or project_id)
         url = str(item.get("report_url") or "")
-        lines.append(f"- {project_id}: {url or 'отчёт не опубликован'}")
+        lines.append(f"- {project_name}: {url or 'отчёт не опубликован'}")
 
     return "\n".join(lines)
 
