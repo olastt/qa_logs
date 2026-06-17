@@ -115,3 +115,8 @@ def test_new_issue_watch_reports_only_after_baseline(monkeypatch, tmp_path):
 
     assert [alert.issue.id for alert in result.alerts] == ["2"]
     assert "Brand new" in text
+    assert "🆕 QA Bot: новые ошибки в Glitchtip — 1" in text
+    assert "Проверено проектов: 1" in text
+    assert "Проект: [hetzner] hetzner-webappswidgets-test" in text
+    assert "Первое появление в Glitchtip: 2026-06-14 13:00 МСК" in text
+    assert "Обнаружено ботом:" in text

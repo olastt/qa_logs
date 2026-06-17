@@ -61,7 +61,7 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PYTHONPATH: src
-  CRON_SUMMARY_PROJECTS: hetzner-webappswidgets-test,hetzner-flutter-doctor-app-test,hetzner-vetmanager-extjs-test,hetzner-vetmanager-extjs-stage
+  CRON_SUMMARY_PROJECTS: selectel-webappswidgets-test,hetzner-webappswidgets-test,hetzner-flutter-doctor-app-test,hetzner-vetmanager-extjs-test,hetzner-vetmanager-extjs-stage,hetzner-vetmanager-extjs-review
 
 jobs:
   qa-release-bot:
@@ -259,6 +259,7 @@ jobs:
           import json
           from pathlib import Path
 
+          from qa_release_bot.notify_format import format_daily_digest
           from qa_release_bot.run_facade import notify_with_url
 
           out = Path("reports")
@@ -278,6 +279,7 @@ jobs:
                       url_by_project[job["project_id"]] = deployed[i]
 
           parts = []
+          digest_items = []
           for job in surge:
               pid = job["project_id"]
               meta_path = out / f"ci_meta_{pid}.json"
@@ -287,9 +289,17 @@ jobs:
               text = str(meta.get("notify_text", ""))
               domain = (job.get("domain") or meta.get("surge_domain") or "").strip()
               url = url_by_project.get(pid) or (f"https://{domain}" if domain else "")
+              meta["project_id"] = pid
+              meta["report_url"] = url
+              digest_items.append(meta)
               parts.append(notify_with_url(text, url))
 
-          if parts:
+          if "${{ github.event_name }}" == "schedule" and "${{ steps.params.outputs.command }}" == "summary":
+              (out / "ci_message.txt").write_text(
+                  format_daily_digest(digest_items),
+                  encoding="utf-8",
+              )
+          elif parts:
               (out / "ci_message.txt").write_text("\n\n".join(parts), encoding="utf-8")
           PY
 
@@ -300,6 +310,7 @@ jobs:
           PYTHONPATH: src
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
           BITRIX_CHAT_ID: ${{ secrets.BITRIX_CHAT_ID }}
+          QA_COMMAND: ${{ steps.params.outputs.command }}
         run: |
           python3 - <<'EOF'
           import sys
@@ -308,17 +319,22 @@ jobs:
           sys.path.insert(0, "scripts")
           from bitrix_notify import send_message
 
-          message_files = sorted(Path("reports").glob("ci_message_*.txt"))
-          if message_files:
-              for path in message_files:
-                  message = path.read_text(encoding="utf-8").strip()
-                  if message:
-                      send_message(message)
-              sys.exit(0)
-
           if Path("reports/ci_message.txt").is_file():
               message = Path("reports/ci_message.txt").read_text(encoding="utf-8").strip()
           else:
+              message_files = sorted(Path("reports").glob("ci_message_*.txt"))
+              if message_files:
+                  messages = [
+                      path.read_text(encoding="utf-8").strip()
+                      for path in message_files
+                      if path.read_text(encoding="utf-8").strip()
+                  ]
+                  message = "\n\n".join(messages)
+              else:
+                  message = ""
+          if not message:
+              if "${{ steps.params.outputs.command }}" == "new-issues":
+                  sys.exit(0)
               log_tail = ""
               if Path("run.log").is_file():
                   log_tail = Path("run.log").read_text(encoding="utf-8")[-800:]

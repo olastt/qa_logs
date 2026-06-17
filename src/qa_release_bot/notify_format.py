@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING, Any
 
-from qa_release_bot.markdown_report import AnalystReport
-from qa_release_bot.summary_report import SummaryReport
+if TYPE_CHECKING:
+    from qa_release_bot.markdown_report import AnalystReport
+    from qa_release_bot.summary_report import SummaryReport
 
 
 def release_verdict_short(decision_verdict: str) -> str:
@@ -47,6 +49,65 @@ def format_summary_notify(
 def format_failure_notify(project_id: str, command: str, error: str) -> str:
     short = _first_line(error)
     return f"❌ Ошибка: {command} {project_id}\n{short}"
+
+
+def format_daily_digest(items: list[dict[str, Any]]) -> str:
+    summary_items = [item for item in items if item.get("command") == "summary"]
+    total_new = sum(int(item.get("new_issues") or 0) for item in summary_items)
+    total_critical = sum(int(item.get("new_critical") or 0) for item in summary_items)
+    total_disappeared = sum(int(item.get("disappeared") or 0) for item in summary_items)
+    attention = [
+        item
+        for item in summary_items
+        if int(item.get("new_issues") or 0) > 0 or int(item.get("new_critical") or 0) > 0
+    ]
+    quiet = [item for item in summary_items if int(item.get("new_issues") or 0) == 0]
+
+    lines = [
+        "📊 QA daily digest",
+        f"Проверено проектов: {len(summary_items)}",
+        f"Новых ошибок сегодня: {total_new}",
+        f"Критичных новых: {total_critical}",
+        f"Исчезло из сводок: {total_disappeared}",
+    ]
+
+    if attention:
+        lines.append("")
+        lines.append("🔴 Требует внимания:")
+        for item in sorted(
+            attention,
+            key=lambda x: (int(x.get("new_critical") or 0), int(x.get("new_issues") or 0)),
+            reverse=True,
+        ):
+            project_id = str(item.get("project_id") or "unknown")
+            new_n = int(item.get("new_issues") or 0)
+            critical_n = int(item.get("new_critical") or 0)
+            lines.append(f"- {project_id}: новых {new_n}, критичных {critical_n}")
+            for title in (item.get("top_new_titles") or [])[:2]:
+                lines.append(f"  • {_first_line(str(title), 120)}")
+            url = str(item.get("report_url") or "")
+            if url:
+                lines.append(f"  Отчёт: {url}")
+    else:
+        lines.append("")
+        lines.append("✅ Новых ошибок по проектам нет.")
+
+    if quiet:
+        lines.append("")
+        lines.append("✅ Без новых ошибок:")
+        for item in quiet[:12]:
+            lines.append(f"- {item.get('project_id')}")
+        if len(quiet) > 12:
+            lines.append(f"- ...и ещё {len(quiet) - 12}")
+
+    lines.append("")
+    lines.append("🔗 Все отчёты:")
+    for item in summary_items:
+        project_id = str(item.get("project_id") or "unknown")
+        url = str(item.get("report_url") or "")
+        lines.append(f"- {project_id}: {url or 'отчёт не опубликован'}")
+
+    return "\n".join(lines)
 
 
 def _first_line(text: str, max_len: int = 200) -> str:

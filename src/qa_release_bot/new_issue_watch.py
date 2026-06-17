@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from qa_release_bot.client import GlitchtipClient
@@ -77,28 +78,31 @@ def watch_new_issues(
 
 
 def format_new_issue_watch_notify(result: WatchResult, *, max_items: int = 10) -> str:
+    detected_at = datetime.now(timezone.utc)
     if result.baseline_created:
         return (
-            "QA Bot: baseline for new-error watcher is ready\n"
-            f"Checked projects: {result.checked_projects}\n"
-            "Existing issues were remembered without notifications."
+            "QA Bot: наблюдение за новыми ошибками включено\n"
+            f"Проверено проектов: {result.checked_projects}\n"
+            "Текущие ошибки запомнены как baseline, уведомления по ним не отправлялись."
         )
     if not result.alerts:
         return (
-            "QA Bot: no absolutely new Glitchtip errors\n"
-            f"Checked projects: {result.checked_projects}"
+            "QA Bot: совершенно новых ошибок в Glitchtip нет\n"
+            f"Проверено проектов: {result.checked_projects}"
         )
 
     lines = [
-        f"QA Bot: absolutely new Glitchtip errors: {len(result.alerts)}",
-        f"Checked projects: {result.checked_projects}",
+        f"🆕 QA Bot: новые ошибки в Glitchtip — {len(result.alerts)}",
+        f"Проверено проектов: {result.checked_projects}",
     ]
     for item in result.alerts[:max_items]:
         issue = item.issue
         lines.append("")
-        lines.append(f"[{item.instance}] {item.project_name}")
-        lines.append(f"{issue.level.upper()} x{issue.count}: {_short(issue.title, 180)}")
-        lines.append(f"first_seen: {issue.first_seen.isoformat()}")
+        lines.append(f"Проект: [{item.instance}] {item.project_name}")
+        lines.append(f"Уровень: {issue.level.upper()} · повторов: {issue.count}")
+        lines.append(f"Ошибка: {_short(issue.title, 220)}")
+        lines.append(f"Первое появление в Glitchtip: {_format_msk(issue.first_seen)}")
+        lines.append(f"Обнаружено ботом: {_format_msk(detected_at)}")
         url = glitchtip_issue_url(
             item.glitchtip_base_url,
             issue.id,
@@ -106,10 +110,10 @@ def format_new_issue_watch_notify(result: WatchResult, *, max_items: int = 10) -
             issue.project_id,
         )
         if url:
-            lines.append(url)
+            lines.append(f"Ссылка: {url}")
     if len(result.alerts) > max_items:
         lines.append("")
-        lines.append(f"...and {len(result.alerts) - max_items} more.")
+        lines.append(f"...и ещё {len(result.alerts) - max_items}")
     return "\n".join(lines)
 
 
@@ -118,3 +122,10 @@ def _short(value: str, max_len: int) -> str:
     if len(value) <= max_len:
         return value
     return value[: max_len - 1].rstrip() + "..."
+
+
+def _format_msk(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    local = value.astimezone(timezone(timedelta(hours=3)))
+    return local.strftime("%Y-%m-%d %H:%M МСК")

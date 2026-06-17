@@ -11,6 +11,7 @@ from qa_release_bot.config import Settings, load_report_config, report_output_di
 from qa_release_bot.notify_format import format_release_notify, format_summary_notify
 from qa_release_bot.projects import CliProject, get_cli_project, surge_domain
 from qa_release_bot.qa_analyst_runner import QAAnalystRunner
+from qa_release_bot.severity_rules import IssueSeverity
 from qa_release_bot.summary_runner import SingleProjectSummaryRunner
 
 
@@ -123,6 +124,12 @@ def run_summary(
         notify_text=notify,
         html_path=str(html_path) if html_path else "",
         new_issues=len(summary.new_issues),
+        new_critical=sum(
+            1
+            for item in summary.new_issues
+            if item.severity in (IssueSeverity.BLOCKER, IssueSeverity.HIGH)
+        ),
+        top_new_titles=[item.tracker_title for item in summary.new_issues[:3]],
         disappeared=summary.disappeared_count,
     )
     return RunResult(
