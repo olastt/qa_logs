@@ -7,14 +7,20 @@ from qa_release_bot.issue_record import IssueRecord
 from qa_release_bot.new_issue_watch import format_new_issue_watch_notify, watch_new_issues
 
 
-def _issue(issue_id: str, title: str = "Server Error") -> IssueRecord:
+def _issue(
+    issue_id: str,
+    title: str = "Server Error",
+    *,
+    first_seen: datetime | None = None,
+) -> IssueRecord:
+    seen = first_seen or datetime(2026, 6, 14, 10, 0, tzinfo=timezone.utc)
     return IssueRecord(
         id=issue_id,
         title=title,
         level="error",
         count=1,
-        last_seen=datetime(2026, 6, 14, 10, 0, tzinfo=timezone.utc),
-        first_seen=datetime(2026, 6, 14, 10, 0, tzinfo=timezone.utc),
+        last_seen=seen,
+        first_seen=seen,
         culprit="",
         org_slug="vetmanager",
         project_slug="webappswidgets-test",
@@ -109,8 +115,19 @@ def test_new_issue_watch_reports_only_after_baseline(monkeypatch, tmp_path):
     monkeypatch.setattr("qa_release_bot.new_issue_watch.GlitchtipClient", FakeClient)
 
     state = tmp_path / "watch.db"
-    watch_new_issues(Settings(), ["hetzner-webappswidgets-test"], state_db_path=state)
-    result = watch_new_issues(Settings(), ["hetzner-webappswidgets-test"], state_db_path=state)
+    reference_at = datetime(2026, 6, 14, 12, 0, tzinfo=timezone.utc)
+    watch_new_issues(
+        Settings(),
+        ["hetzner-webappswidgets-test"],
+        state_db_path=state,
+        reference_at=reference_at,
+    )
+    result = watch_new_issues(
+        Settings(),
+        ["hetzner-webappswidgets-test"],
+        state_db_path=state,
+        reference_at=reference_at,
+    )
     text = format_new_issue_watch_notify(result)
 
     assert [alert.issue.id for alert in result.alerts] == ["2"]

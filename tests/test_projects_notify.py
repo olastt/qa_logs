@@ -60,6 +60,10 @@ def test_validate_command_project_mismatch():
 def test_surge_domain():
     assert surge_domain("vetmanager-extjs", "release") == "qa-extjs-release.surge.sh"
     assert surge_domain("webapps-widgets", "summary") == "qa-widgets-summary.surge.sh"
+    assert (
+        surge_domain("selectel-webappswidgets-test", "summary")
+        != surge_domain("hetzner-webappswidgets-test", "summary")
+    )
     assert surge_domain("vetmanager-laravel", "summary") == "qa-laravel-summary.surge.sh"
 
 

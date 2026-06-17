@@ -39,11 +39,13 @@ def watch_new_issues(
     *,
     state_db_path: Path | None = None,
     baseline_on_first_run: bool = True,
+    reference_at: datetime | None = None,
 ) -> WatchResult:
     cfg = load_report_config()
     query, stats_period = report_fetch_options(cfg)
     store = IssueStateStore(state_db_path or settings.state_db_path)
     baseline = baseline_on_first_run and store.watched_issue_count() == 0
+    today_msk = _msk_date(reference_at or datetime.now(timezone.utc))
 
     alerts: list[WatchedNewIssue] = []
     refs = [build_summary_ref(settings, cfg, name=pid) for pid in project_ids]
@@ -62,7 +64,7 @@ def watch_new_issues(
             if store.is_watched_issue_known(ref["instance"], project.slug, issue.id):
                 store.mark_watched_issue_seen(ref["instance"], project.slug, issue.id)
                 continue
-            if not baseline:
+            if not baseline and _msk_date(issue.first_seen) == today_msk:
                 alerts.append(
                     WatchedNewIssue(
                         instance=ref["instance"],
@@ -129,3 +131,9 @@ def _format_msk(value: datetime) -> str:
         value = value.replace(tzinfo=timezone.utc)
     local = value.astimezone(timezone(timedelta(hours=3)))
     return local.strftime("%Y-%m-%d %H:%M МСК")
+
+
+def _msk_date(value: datetime):
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone(timedelta(hours=3))).date()

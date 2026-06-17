@@ -120,10 +120,14 @@ def all_cli_project_ids() -> list[str]:
 def surge_domain(project_id: str, command: str) -> str:
     """qa-extjs-release.surge.sh ← vetmanager-extjs / selectel-webappswidgets-test."""
     slug = project_id
-    for prefix in ("selectel-", "hetzner-"):
-        if slug.startswith(prefix):
-            slug = slug[len(prefix) :]
-            break
+    keep_instance = command == "summary" and (
+        slug.startswith("selectel-") or slug.startswith("hetzner-")
+    )
+    if not keep_instance:
+        for prefix in ("selectel-", "hetzner-"):
+            if slug.startswith(prefix):
+                slug = slug[len(prefix) :]
+                break
     slug = (
         slug.removeprefix("vetmanager-")
         .removeprefix("webappswidgets-")
